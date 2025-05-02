@@ -1,0 +1,6 @@
+biomarker,min_value,max_value,unit
+cholesterol,150,200,mg/dL
+blood_pressure,90,120,mmHg
+glucose,70,100,mg/dL
+hemoglobin,12,16,g/dL
+white_blood_cells,4500,11000,cells/µL

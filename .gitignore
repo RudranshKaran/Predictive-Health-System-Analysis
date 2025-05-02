@@ -1,0 +1,39 @@
+# Python virtual environment
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.env
+*.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE specific files
+.vscode/
+.idea/
+*.sublime-workspace
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Logs and databases
+*.log
+*.sqlite3
+
+# Test coverage
+htmlcov/
+.coverage
+.tox/
+.nox/
+.cache/
+pytest_cache/
+
+# Git specific files
+*.orig
+*.rej
+*.patch
+*.diff
