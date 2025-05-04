@@ -99,8 +99,23 @@ df_noise['RBC_Hb_Ratio'] = df_noise['RBC'] / df_noise['Hemoglobin']
 df_noise['RDW_MCV_Ratio'] = df_noise['RDW'] / df_noise['MCV']
 df_noise['Age_Hb_Interaction'] = df_noise['Age'] * df_noise['Hemoglobin'] / 100  # Scaling to avoid large values
 
+# Remove Hemoglobin-based features
+if 'Hb_MCH_Ratio' in df_noise.columns:
+    df_noise.drop(columns=['Hb_MCH_Ratio', 'Hb_MCHC_Ratio', 'Hb_Gender_Interaction'], inplace=True, errors='ignore')
+
+# Add new derived features without Hb
+df_noise['RBC_MCV_Ratio'] = df_noise['RBC'] / df_noise['MCV']
+df_noise['RDW_MCV_Ratio'] = df_noise['RDW'] / df_noise['MCV']
+df_noise['MCH_MCHC_Ratio'] = df_noise['MCH'] / df_noise['MCHC']
+df_noise['Age_RBC_Interaction'] = df_noise['Age'] * df_noise['RBC'] / 100
+df_noise['RDW_Age_Interaction'] = df_noise['RDW'] * np.log(df_noise['Age'] + 1)
+
 # Split into features and labels
-X = df_noise.drop(columns=['Result', 'S. No.'])
+# Explicitly exclude Hemoglobin from features
+features_to_use = ['RBC', 'MCV', 'MCH', 'MCHC', 'RDW', 'Age', 'Gender',
+                   'RBC_MCV_Ratio', 'RDW_MCV_Ratio', 'MCH_MCHC_Ratio',
+                   'Age_RBC_Interaction', 'RDW_Age_Interaction']
+X = df_noise[features_to_use]
 
 # Exclude TLC, PCV, and PLT parameters from the features
 features_to_exclude = ['TLC', 'PCV', 'PLT']

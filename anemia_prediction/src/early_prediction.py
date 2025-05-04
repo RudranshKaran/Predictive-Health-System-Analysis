@@ -9,13 +9,9 @@ from sklearn.metrics import classification_report, confusion_matrix, roc_curve, 
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from imblearn.over_sampling import SMOTE
-import shap
 import joblib
 import warnings
 warnings.filterwarnings('ignore')
-
-# Print SHAP version for diagnostic purposes
-print(f"Using SHAP version: {shap.__version__}")
 
 print("Loading data...")
 df = pd.read_csv("data/datanew.csv")  # Updated to use the new dataset
@@ -98,18 +94,16 @@ print(f"Anemia cases: {df['Result'].sum()}, Non-anemia cases: {(df['Result'] == 
 
 # Create derived features that might capture subtle patterns
 print("\n--- Creating derived features for early prediction ---")
-# Original derived features
-df['Hb_MCH_Ratio'] = df['Hemoglobin'] / df['MCH']
-df['Hb_MCHC_Ratio'] = df['Hemoglobin'] / df['MCHC'] 
-df['MCH_MCV_Ratio'] = df['MCH'] / df['MCV']
-df['MCHC_MCV_Ratio'] = df['MCHC'] / df['MCV']
-df['Hb_Gender_Interaction'] = df['Hemoglobin'] * df['Gender']
+# Remove Hemoglobin-based features
+if 'Hb_MCH_Ratio' in df.columns:
+    df.drop(columns=['Hb_MCH_Ratio', 'Hb_MCHC_Ratio', 'Hb_Gender_Interaction'], inplace=True, errors='ignore')
 
-# New derived features using the new parameters
-df['RBC_Hb_Ratio'] = df['RBC'] / df['Hemoglobin']
+# Add new derived features without Hb
+df['RBC_MCV_Ratio'] = df['RBC'] / df['MCV']
 df['RDW_MCV_Ratio'] = df['RDW'] / df['MCV']
-df['Age_Hb_Interaction'] = df['Age'] * df['Hemoglobin'] / 100  # Scaling to avoid large values
-df['RBC_Age_Interaction'] = df['RBC'] * np.log(df['Age'] + 1)  # Log transformation to handle age effect
+df['MCH_MCHC_Ratio'] = df['MCH'] / df['MCHC']
+df['Age_RBC_Interaction'] = df['Age'] * df['RBC'] / 100
+df['RDW_Age_Interaction'] = df['RDW'] * np.log(df['Age'] + 1)
 
 # Identify borderline cases - where Hemoglobin is normal but close to threshold
 # WHO defines anemia as hemoglobin < 13 g/dL for men and < 12 g/dL for women
@@ -132,7 +126,12 @@ print(f"Early risk cases: {df['Early_Risk'].sum()} (including borderline cases)"
 # Split into features and target
 print("\nPreparing features for model training...")
 
-X = df.drop(columns=['Result', 'Early_Risk', 'Borderline'], errors='ignore')
+# Explicitly exclude Hemoglobin from features
+features_to_use = ['RBC', 'MCV', 'MCH', 'MCHC', 'RDW', 'Age', 'Gender',
+                   'RBC_MCV_Ratio', 'RDW_MCV_Ratio', 'MCH_MCHC_Ratio',
+                   'Age_RBC_Interaction', 'RDW_Age_Interaction']
+X = df[features_to_use]
+
 # Also drop S. No. if it exists as it's just an identifier
 if 'S. No.' in X.columns:
     X = X.drop(columns=['S. No.'])
@@ -214,64 +213,6 @@ if hasattr(best_model, 'feature_importances_'):
     plt.title('Feature Importance for Early Anemia Risk Prediction')
     plt.tight_layout()
     plt.savefig('model/early_predict_importance.png')
-
-# SHAP analysis for explainable predictions
-print("\n--- SHAP Analysis for Explainable Predictions ---")
-# Take a sample of the test data for SHAP analysis
-X_shap = X_test.iloc[:100] if len(X_test) > 100 else X_test  # Use a subset for faster computation
-
-# Verify all expected features are present
-expected_features = []  # Removed TLC, PLT, PCV from the expected features list
-for feature in expected_features:
-    if feature not in X_shap.columns:
-        print(f"WARNING: Feature {feature} is missing from the SHAP analysis data")
-
-print("Creating SHAP explainer...")
-print(f"Model type: {type(best_model).__name__}")
-print(f"X_shap shape: {X_shap.shape}")
-print(f"Feature names: {X_shap.columns.tolist()}")
-
-# Create SHAP explainer based on model type
-try:
-    if hasattr(best_model, "estimators_"):  # For tree-based models
-        print("Using TreeExplainer for tree-based model")
-        explainer = shap.TreeExplainer(best_model)
-        shap_values = explainer(X_shap)
-    elif hasattr(best_model, "predict_proba"):  # For other classifiers
-        print("Using Explainer for classifier with predict_proba")
-        explainer = shap.Explainer(best_model, X_train_smote)
-        shap_values = explainer(X_shap)
-    else:  # Fallback
-        print("Model type not directly supported by SHAP, using KernelExplainer...")
-        # Create a background dataset for the explainer using training data
-        X_train_summary = shap.kmeans(X_train_smote, 10)  # Use kmeans to get a representative sample
-        explainer = shap.KernelExplainer(best_model.predict, X_train_summary)
-        shap_values = explainer.shap_values(X_shap)
-except Exception as e:
-    print(f"Error creating SHAP explainer: {e}")
-    print("Trying alternative approach...")
-    try:
-        # Simpler approach with fewer options
-        explainer = shap.Explainer(best_model, X_train_smote, feature_names=X.columns.tolist())
-        shap_values = explainer(X_shap)
-    except Exception as e:
-        print(f"Alternative approach also failed: {e}")
-        print("Skipping SHAP analysis due to errors")
-
-plt.figure(figsize=(12, 8))
-try:
-    shap.summary_plot(shap_values, X_shap, plot_type="bar", show=False)
-    plt.tight_layout()
-    plt.savefig('model/early_predict_shap_summary.png')
-    
-    plt.figure(figsize=(12, 10))
-    shap.summary_plot(shap_values, X_shap, show=False)
-    plt.tight_layout()
-    plt.savefig('model/early_predict_shap_values.png')
-    print("SHAP plots created successfully!")
-except Exception as e:
-    print(f"Error creating SHAP plots: {e}")
-    print("Continuing with the rest of the analysis...")
 
 print("\n--- Creating Risk Stratification System ---")
 # Use predicted probabilities to stratify risk

@@ -3,7 +3,6 @@ import numpy as np
 import joblib
 import matplotlib.pyplot as plt
 import seaborn as sns
-import shap
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -195,159 +194,6 @@ def anemia_type_detector(gender, hb, mcv, mch, mchc, rdw=None, rbc=None, age=Non
         'description': 'Blood parameters do not clearly indicate a specific anemia type'
     }
 
-def perform_shap_analysis(patient_data, model, scaler):
-    """
-    Perform SHAP analysis to explain the prediction for this patient
-    
-    Parameters:
-    patient_data: dict with patient's blood parameters
-    model: trained model
-    scaler: fitted scaler
-    
-    Returns:
-    shap_values: SHAP values for the prediction
-    feature_names: names of the features
-    base_value: baseline value of the model
-    """
-    # Create a copy of patient data for model input
-    model_input_data = {k: v for k, v in patient_data.items()}
-    
-    # Create a DataFrame for the patient with derived features
-    patient_df = pd.DataFrame([model_input_data])
-    
-    # Create original derived features
-    patient_df['Hb_MCH_Ratio'] = patient_df['Hemoglobin'] / patient_df['MCH']
-    patient_df['Hb_MCHC_Ratio'] = patient_df['Hemoglobin'] / patient_df['MCHC'] 
-    patient_df['MCH_MCV_Ratio'] = patient_df['MCH'] / patient_df['MCV']
-    patient_df['MCHC_MCV_Ratio'] = patient_df['MCHC'] / patient_df['MCV']
-    patient_df['Hb_Gender_Interaction'] = patient_df['Hemoglobin'] * patient_df['Gender']
-    
-    # Create new derived features for RBC, RDW, and Age if available
-    if 'RBC' in patient_data:
-        patient_df['RBC_Hb_Ratio'] = patient_df['RBC'] / patient_df['Hemoglobin']
-    
-    if 'RDW' in patient_data and 'MCV' in patient_data:
-        patient_df['RDW_MCV_Ratio'] = patient_df['RDW'] / patient_df['MCV']
-    
-    if 'Age' in patient_data and 'Hemoglobin' in patient_data:
-        patient_df['Age_Hb_Interaction'] = patient_df['Age'] * patient_df['Hemoglobin'] / 100
-    
-    if 'Age' in patient_data and 'RBC' in patient_data:
-        patient_df['RBC_Age_Interaction'] = patient_df['RBC'] * np.log(patient_df['Age'] + 1)
-    
-    # Scale the features while preserving column names
-    feature_names = patient_df.columns
-    patient_scaled = pd.DataFrame(
-        scaler.transform(patient_df),
-        columns=feature_names
-    )
-    
-    # Create background data for SHAP (use a sample of typical values)
-    # In a real implementation, we'd use a representative sample of the dataset
-    typical_values = {}
-    typical_values['male'] = pd.DataFrame([{
-        'Gender': 1,
-        'Hemoglobin': 15.0,
-        'MCH': 30.0,
-        'MCHC': 34.0,
-        'MCV': 90.0,
-        'Hb_MCH_Ratio': 15.0/30.0,
-        'Hb_MCHC_Ratio': 15.0/34.0,
-        'MCH_MCV_Ratio': 30.0/90.0,
-        'MCHC_MCV_Ratio': 34.0/90.0,
-        'Hb_Gender_Interaction': 15.0*1,
-        'RBC': 5.2,
-        'RDW': 13.0,
-        'Age': 45,
-        'RBC_Hb_Ratio': 5.2/15.0,
-        'RDW_MCV_Ratio': 13.0/90.0,
-        'Age_Hb_Interaction': 45*15.0/100,
-        'RBC_Age_Interaction': 5.2*np.log(45+1)
-    }])
-    typical_values['female'] = pd.DataFrame([{
-        'Gender': 0,
-        'Hemoglobin': 13.5,
-        'MCH': 30.0,
-        'MCHC': 34.0,
-        'MCV': 90.0,
-        'Hb_MCH_Ratio': 13.5/30.0,
-        'Hb_MCHC_Ratio': 13.5/34.0,
-        'MCH_MCV_Ratio': 30.0/90.0,
-        'MCHC_MCV_Ratio': 34.0/90.0,
-        'Hb_Gender_Interaction': 13.5*0,
-        'RBC': 4.6,
-        'RDW': 13.0,
-        'Age': 45,
-        'RBC_Hb_Ratio': 4.6/13.5,
-        'RDW_MCV_Ratio': 13.0/90.0,
-        'Age_Hb_Interaction': 45*13.5/100,
-        'RBC_Age_Interaction': 4.6*np.log(45+1)
-    }])
-    
-    # Choose appropriate background data based on gender
-    gender = 'male' if patient_data['Gender'] == 1 else 'female'
-    background_data = typical_values[gender]
-    
-    # Filter background data to include only columns present in patient_scaled
-    background_data = background_data[[col for col in background_data.columns if col in patient_scaled.columns]]
-    
-    # Create SHAP explainer with check_additivity=False to suppress additivity warnings
-    if hasattr(model, 'predict_proba'):
-        explainer = shap.Explainer(model, background_data)
-        shap_values = explainer(patient_scaled, check_additivity=False)
-        # SHAP values for the probability of class 1 (anemia)
-        try:
-            return shap_values[:, :, 1], feature_names, explainer.expected_value[1]
-        except:
-            # For some SHAP versions the format is different
-            return shap_values, feature_names, explainer.expected_value
-    else:
-        explainer = shap.Explainer(model, background_data)
-        shap_values = explainer(patient_scaled, check_additivity=False)
-        return shap_values, feature_names, explainer.expected_value
-
-def print_shap_analysis(shap_values, feature_names, base_value, patient_data):
-    """
-    Print and visualize SHAP analysis results
-    """
-    print("\n----- SHAP FEATURE CONTRIBUTION ANALYSIS -----")
-    
-    # Get SHAP values as a dictionary for easier access
-    try:
-        # For newer SHAP versions
-        feature_contributions = dict(zip(feature_names, shap_values[0].values))
-    except:
-        # Fall back for different SHAP versions
-        feature_contributions = dict(zip(feature_names, shap_values[0]))
-    
-    # Sort features by absolute SHAP value
-    sorted_features = sorted(
-        feature_contributions.items(), 
-        key=lambda x: abs(x[1]), 
-        reverse=True
-    )
-    
-    print(f"Baseline risk: {base_value:.4f}")
-    print("Top feature contributions (positive values increase risk, negative values decrease risk):")
-    
-    for feature, value in sorted_features[:5]:  # Show top 5 features
-        direction = "INCREASES" if value > 0 else "DECREASES"
-        print(f"• {feature}: {value:.4f} ({direction} risk)")
-    
-    # Create a SHAP waterfall plot for the patient
-    plt.figure(figsize=(10, 6))
-    try:
-        shap.plots.waterfall(shap_values[0], max_display=10, show=False)
-        plt.title("SHAP Feature Contributions")
-        plt.tight_layout()
-        plt.savefig('model/shap_waterfall.png')
-        print("\nSHAP waterfall plot saved to model/shap_waterfall.png")
-    except:
-        print("\nCouldn't create waterfall plot - may need updated SHAP version")
-    
-    # Return the sorted features for use in the detailed analysis
-    return sorted_features
-
 def predict_early_anemia_risk(patient_data, model, scaler, detailed=False):
     """
     Predict early anemia risk for a patient with comprehensive analysis
@@ -371,61 +217,59 @@ def predict_early_anemia_risk(patient_data, model, scaler, detailed=False):
     # Create a DataFrame for the patient
     patient_df = pd.DataFrame([model_input_data])
     
-    # Create the basic derived features
-    patient_df['Hb_MCH_Ratio'] = patient_df['Hemoglobin'] / patient_df['MCH']
-    patient_df['Hb_MCHC_Ratio'] = patient_df['Hemoglobin'] / patient_df['MCHC'] 
-    patient_df['MCH_MCV_Ratio'] = patient_df['MCH'] / patient_df['MCV']
-    patient_df['MCHC_MCV_Ratio'] = patient_df['MCHC'] / patient_df['MCV']
-    patient_df['Hb_Gender_Interaction'] = patient_df['Hemoglobin'] * patient_df['Gender']
+    # Extract feature_names_in_ from scaler if available
+    if hasattr(scaler, 'feature_names_in_'):
+        training_features = list(scaler.feature_names_in_)
+    else:
+        # Fallback to our list of expected features in case scaler doesn't have feature_names_in_
+        training_features = ['RBC', 'MCV', 'MCH', 'MCHC', 'RDW', 'Age', 'Gender',
+                            'RBC_MCV_Ratio', 'RDW_MCV_Ratio', 'MCH_MCHC_Ratio',
+                            'Age_RBC_Interaction', 'RDW_Age_Interaction']
     
-    # Create derived features for the new parameters if available
-    if 'RBC' in patient_data:
-        patient_df['RBC_Hb_Ratio'] = patient_df['RBC'] / patient_df['Hemoglobin']
-        
-    if 'RDW' in patient_data and 'MCV' in patient_data:
-        patient_df['RDW_MCV_Ratio'] = patient_df['RDW'] / patient_df['MCV']
-        
-    if 'Age' in patient_data and 'Hemoglobin' in patient_data:
-        patient_df['Age_Hb_Interaction'] = patient_df['Age'] * patient_df['Hemoglobin'] / 100
-        
-    if 'Age' in patient_data and 'RBC' in patient_data:
-        patient_df['RBC_Age_Interaction'] = patient_df['RBC'] * np.log(patient_df['Age'] + 1)
-    
-    # Scale the features
-    try:
-        patient_scaled = pd.DataFrame(
-            scaler.transform(patient_df),
-            columns=patient_df.columns
-        )
-    except ValueError as e:
-        # If we get a feature mismatch error, print more details
-        if "feature_names_in_" in str(e) or "feature names" in str(e):
-            if hasattr(scaler, 'feature_names_in_'):
-                missing_features = set(scaler.feature_names_in_) - set(patient_df.columns)
-                extra_features = set(patient_df.columns) - set(scaler.feature_names_in_)
-                if missing_features:
-                    print(f"Missing features from model training: {missing_features}")
-                if extra_features:
-                    print(f"Extra features not in model: {extra_features}")
-                # Use only the features that were available during model training
-                patient_df = patient_df.reindex(columns=scaler.feature_names_in_, fill_value=0)
+    # Set default values for missing required base features
+    required_features = ['RBC', 'MCV', 'MCH', 'MCHC', 'RDW', 'Age', 'Gender']
+    for feature in required_features:
+        if feature not in patient_df.columns:
+            # Use sensible defaults for missing features
+            if feature == 'Age':
+                patient_df[feature] = 45  # Middle-aged default
+            elif feature == 'RBC':
+                # Gender-specific default RBC values
+                if patient_data.get('Gender') == 1:  # Male
+                    patient_df[feature] = 5.0  # Normal male RBC
+                else:  # Female
+                    patient_df[feature] = 4.5  # Normal female RBC
+            elif feature == 'RDW':
+                patient_df[feature] = 13.0  # Normal RDW
             else:
-                print("Scaler doesn't have feature_names_in_ attribute. Using core features only.")
-                # Fall back to core features only
-                patient_df = pd.DataFrame([{
-                    'Gender': patient_data['Gender'],
-                    'Hemoglobin': patient_data['Hemoglobin'],
-                    'MCH': patient_data['MCH'],
-                    'MCHC': patient_data['MCHC'],
-                    'MCV': patient_data['MCV']
-                }])
-            # Try again with corrected features
-            patient_scaled = pd.DataFrame(
-                scaler.transform(patient_df),
-                columns=patient_df.columns
-            )
-        else:
-            raise  # Re-raise if it's not a feature mismatch error
+                patient_df[feature] = 0  # Default for other features
+    
+    # Remove Hemoglobin and other non-training features
+    columns_to_drop = ['Hemoglobin', 'MCH_MCV_Ratio', 'MCHC_MCV_Ratio']
+    for col in columns_to_drop:
+        if col in patient_df.columns:
+            patient_df.drop(columns=[col], inplace=True, errors='ignore')
+    
+    # Add the exact derived features used during training
+    if 'RBC' in patient_df.columns and 'MCV' in patient_df.columns:
+        patient_df['RBC_MCV_Ratio'] = patient_df['RBC'] / patient_df['MCV']
+    if 'RDW' in patient_df.columns and 'MCV' in patient_df.columns:
+        patient_df['RDW_MCV_Ratio'] = patient_df['RDW'] / patient_df['MCV']
+    if 'MCH' in patient_df.columns and 'MCHC' in patient_df.columns:
+        patient_df['MCH_MCHC_Ratio'] = patient_df['MCH'] / patient_df['MCHC']
+    if 'Age' in patient_df.columns and 'RBC' in patient_df.columns:
+        patient_df['Age_RBC_Interaction'] = patient_df['Age'] * patient_df['RBC'] / 100
+    if 'Age' in patient_df.columns and 'RDW' in patient_df.columns:
+        patient_df['RDW_Age_Interaction'] = patient_df['RDW'] * np.log(patient_df['Age'] + 1)
+    
+    # Ensure the DataFrame has exactly the same features AND ORDER as used in training
+    patient_df = patient_df.reindex(columns=training_features, fill_value=0)
+    
+    # Scale the features using the same scaler used during training
+    patient_scaled = pd.DataFrame(
+        scaler.transform(patient_df),
+        columns=patient_df.columns
+    )
     
     # Make predictions with the ML model
     ml_prediction = model.predict(patient_scaled)[0]
@@ -683,19 +527,6 @@ def predict_early_anemia_risk(patient_data, model, scaler, detailed=False):
     analysis['ml_probability'] = ml_probability
     analysis['adjusted_probability'] = adjusted_probability
     
-    # If detailed analysis is requested, add SHAP values
-    if detailed:
-        try:
-            # Perform SHAP analysis
-            shap_values, feature_names, base_value = perform_shap_analysis(patient_data, model, scaler)
-            analysis['shap'] = {
-                'values': shap_values,
-                'feature_names': feature_names,
-                'base_value': base_value
-            }
-        except Exception as e:
-            print(f"SHAP analysis failed: {str(e)}")
-    
     return adjusted_prediction, adjusted_probability, risk_category, analysis
 
 def print_detailed_analysis(patient_data, prediction=None, probability=None, category=None, analysis=None):
@@ -798,35 +629,19 @@ def print_detailed_analysis(patient_data, prediction=None, probability=None, cat
             print(f"     Risk probability: {probability:.2f}")
             print("     Routine follow-up recommended")
     
-    # Add SHAP analysis to the output if available
-    if 'shap' in analysis:
-        try:
-            sorted_features = print_shap_analysis(
-                analysis['shap']['values'], 
-                analysis['shap']['feature_names'], 
-                analysis['shap']['base_value'],
-                patient_data
-            )
-            
-            # Enhance the conclusion with SHAP insights
-            print("\n----- FEATURE IMPORTANCE INSIGHTS -----")
-            for feature, value in sorted_features[:3]:  # Focus on top 3
-                if 'Hemoglobin' in feature and value < 0:
-                    print(f"• High hemoglobin ({patient_data['Hemoglobin']}) significantly reduces anemia risk")
-                elif 'Hemoglobin' in feature and value > 0:
-                    print(f"• Low hemoglobin ({patient_data['Hemoglobin']}) significantly increases anemia risk")
-                elif 'MCH' in feature and value > 0:
-                    print(f"• Low MCH ({patient_data['MCH']}) contributes to increased risk")
-                elif 'MCHC' in feature and value > 0:
-                    print(f"• Low MCHC ({patient_data['MCHC']}) suggests hypochromic pattern")
-                elif 'MCV' in feature and value > 0 and patient_data['MCV'] < 80:
-                    print(f"• Low MCV ({patient_data['MCV']}) indicates microcytic pattern")
-                elif 'MCV' in feature and value > 0 and patient_data['MCV'] > 100:
-                    print(f"• High MCV ({patient_data['MCV']}) indicates macrocytic pattern")
-                elif 'Ratio' in feature and value > 0:
-                    print(f"• Abnormal {feature} suggests imbalance in red cell parameters")
-        except Exception as e:
-            print(f"\nSHAP analysis display failed: {str(e)}")
+    # Feature importance insights
+    print("\n----- FEATURE IMPORTANCE INSIGHTS -----")
+    # Add generic insights based on known medical relationships
+    if 'MCV' in patient_data and patient_data['MCV'] < 80:
+        print(f"• Low MCV ({patient_data['MCV']:.1f}) indicates microcytic pattern")
+    elif 'MCV' in patient_data and patient_data['MCV'] > 100:
+        print(f"• High MCV ({patient_data['MCV']:.1f}) indicates macrocytic pattern")
+        
+    if 'RDW' in patient_data and patient_data['RDW'] > 15:
+        print(f"• Elevated RDW ({patient_data['RDW']:.1f}%) suggests active erythropoiesis")
+        
+    if 'MCH' in patient_data and patient_data['MCH'] < 27:
+        print(f"• Low MCH ({patient_data['MCH']:.1f}) contributes to increased risk")
     
     print("\n==================================================")
 
@@ -838,7 +653,9 @@ test_cases = {
         'MCH': 22.0,  # Low (hypochromic)
         'MCHC': 29.0,  # Low (hypochromic)
         'MCV': 75.0,   # Low (microcytic)
-        'RDW': 16.5    # Elevated (typical in iron deficiency)
+        'RDW': 16.5,   # Elevated (typical in iron deficiency)
+        'RBC': 4.1,    # Slightly low (typical in iron deficiency)
+        'Age': 45      # Middle-aged
     },
     "latent_iron_deficiency": {
         'Gender': 1,  # Male
@@ -846,7 +663,9 @@ test_cases = {
         'MCH': 22.0,  # Low (hypochromic)
         'MCHC': 29.0,  # Low (hypochromic)
         'MCV': 82.0,   # Low-normal
-        'RDW': 15.2    # Slightly elevated (early changes)
+        'RDW': 15.2,   # Slightly elevated (early changes)
+        'RBC': 4.7,    # Normal
+        'Age': 35      # Young adult
     },
     "b12_folate_deficiency": {
         'Gender': 0,  # Female
@@ -854,7 +673,9 @@ test_cases = {
         'MCH': 31.0,  # Normal-high
         'MCHC': 33.0,  # Normal
         'MCV': 105.0,  # High (macrocytic)
-        'RDW': 16.0    # Elevated
+        'RDW': 16.0,   # Elevated
+        'RBC': 3.8,    # Low (typical in B12/folate deficiency)
+        'Age': 68      # Elderly (B12 deficiency more common)
     },
     "thalassemia_trait": {
         'Gender': 1,  # Male
@@ -862,7 +683,9 @@ test_cases = {
         'MCH': 24.0,  # Low
         'MCHC': 32.5,  # Normal
         'MCV': 74.0,   # Low (microcytic)
-        'RDW': 13.5    # Normal (key differentiator from iron deficiency)
+        'RDW': 13.5,   # Normal (key differentiator from iron deficiency)
+        'RBC': 5.8,    # High (characteristic of thalassemia trait)
+        'Age': 30      # Young adult
     },
     "anemia_chronic_disease": {
         'Gender': 0,  # Female
@@ -870,7 +693,9 @@ test_cases = {
         'MCH': 28.0,  # Normal
         'MCHC': 33.0,  # Normal
         'MCV': 86.0,   # Normal
-        'RDW': 14.0    # Normal
+        'RDW': 14.0,   # Normal
+        'RBC': 3.9,    # Slightly low
+        'Age': 72      # Elderly (ACD more common in older adults)
     }
 }
 
