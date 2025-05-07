@@ -1,12 +1,13 @@
 # Entry point for the Streamlit dashboard
 
-import streamlit as st
 import pandas as pd
+import streamlit as st
 from src.patient_summary import PatientSummary
 from src.biomarker_analysis import BiomarkerAnalysis
 from src.regional_analysis import RegionalAnalysis
 
 # Initialize the modules
+
 @st.cache_resource
 def init_modules():
     patient_module = PatientSummary()
@@ -33,7 +34,7 @@ def main():
     # Sidebar navigation
     analysis_type = st.sidebar.selectbox(
         "Select Analysis Type",
-        ["Patient Summary", "Biomarker Analysis", "Regional Trends"]
+        ["Patient Summary", "Biomarker Analysis", "Regional Trends", "Model Performance"]
     )
     
     if analysis_type == "Patient Summary":
@@ -95,7 +96,7 @@ def main():
             else:
                 st.warning("No biomarker data found for this patient ID")
                 
-    else:  # Regional Trends
+    elif analysis_type == "Regional Trends":
         st.header("Regional Health Trends")
         
         region = st.selectbox(
@@ -165,6 +166,73 @@ def main():
                     st.plotly_chart(heatmap)
             else:
                 st.warning("No data available for selected region")
+                
+    else:  # Model Performance
+        st.header("Model Performance Metrics")
+        
+        # Add options for model configuration
+        st.sidebar.subheader("Model Configuration")
+        test_size = st.sidebar.slider("Test Set Size", 0.1, 0.4, 0.2, 0.05)
+        n_estimators = st.sidebar.slider("Number of Trees", 50, 200, 100, 10)
+        
+        if st.button("Calculate Performance Metrics"):
+            with st.spinner("Training model and calculating metrics..."):
+                # Get performance metrics with configured parameters
+                metrics = biomarker_module.train_and_evaluate_model(test_size=test_size, n_estimators=n_estimators)
+                
+                if metrics:
+                    # Add model summary
+                    st.markdown("### Model Summary")
+                    st.info(f"""
+                    - Model Type: Random Forest Classifier
+                    - Number of Trees: {n_estimators}
+                    - Test Set Size: {test_size*100}%
+                    - Features: Cholesterol, Blood Pressure, Glucose, Hemoglobin, White Blood Cells
+                    """)
+                    
+                    # Display metrics in tabs
+                    tab1, tab2, tab3 = st.tabs(["Overall Metrics", "Detailed Report", "Confusion Matrix"])
+                    
+                    with tab1:
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.metric("Macro F1", f"{metrics['f1_scores']['macro']:.3f}")
+                            st.metric("Macro Recall", f"{metrics['recall_scores']['macro']:.3f}")
+                        with col2:
+                            st.metric("Weighted F1", f"{metrics['f1_scores']['weighted']:.3f}")
+                            st.metric("Weighted Recall", f"{metrics['recall_scores']['weighted']:.3f}")
+                            
+                        if 'accuracy' in metrics:
+                            st.metric("Overall Accuracy", f"{metrics['accuracy']:.3f}")
+                    
+                    with tab2:
+                        st.subheader("Classification Report")
+                        st.text(metrics['classification_report'])
+                        
+                        if 'feature_importance' in metrics:
+                            st.subheader("Feature Importance")
+                            feature_imp = pd.DataFrame(
+                                metrics['feature_importance'],
+                                columns=['Importance']
+                            ).sort_values('Importance', ascending=True)
+                            st.bar_chart(feature_imp)
+                    
+                    with tab3:
+                        st.subheader("Confusion Matrix")
+                        fig = biomarker_module.plot_confusion_matrix(metrics)
+                        if fig:
+                            st.pyplot(fig)
+                            
+                        # Add confusion matrix interpretation
+                        st.markdown("### Matrix Interpretation")
+                        st.info("""
+                        The confusion matrix shows:
+                        - True Positives (diagonal): Correctly predicted cases
+                        - False Positives (columns): Incorrectly predicted positives
+                        - False Negatives (rows): Missed cases
+                        """)
+                else:
+                    st.error("No data available to calculate metrics")
 
 if __name__ == "__main__":
     main()

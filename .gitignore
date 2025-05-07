@@ -37,3 +37,6 @@ pytest_cache/
 *.rej
 *.patch
 *.diff
+.venv/pyvenv.cfg
+.venv/pyvenv.cfg
+/.venv
