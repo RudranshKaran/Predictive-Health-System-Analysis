@@ -226,40 +226,57 @@ class RegionalAnalysis:
             return hotspots
         return []
     
-    def plot_regional_heatmap(self, indicator: str):
+    def plot_regional_heatmap(self, disease: str = None):
         """
-        Create a heatmap visualization for health indicators using Plotly.
+        Create a heatmap visualization for disease prevalence using Plotly.
         
         Args:
-            indicator (str): The health indicator to visualize
+            disease (str, optional): The specific disease to visualize.
+                If None, visualizes all diseases with color indicating prevalence.
             
         Returns:
             plotly.graph_objects.Figure or None: Interactive mapbox scatter plot
-            showing the distribution of the health indicator across regions.
+            showing the distribution of diseases across regions.
             Returns None if data is missing or an error occurs.
             
         Notes:
             - Uses OpenStreetMap style for base map
             - Color scale: Viridis
-            - Uniform point size: 10
+            - Point size indicates case count
             - Default zoom level: 7
         """
-        if self.regional_data is None or indicator not in self.regional_data.columns:
+        if self.regional_data is None:
             return None
             
         try:
-            # Create a scatter mapbox for better visualization
+            # If specific disease is provided, filter for that disease
+            if disease and disease in self.regional_data['diagnosis'].unique():
+                plot_data = self.regional_data[self.regional_data['diagnosis'] == disease]
+                # Group by coordinates and count occurrences
+                plot_data = plot_data.groupby(['latitude', 'longitude', 'region']).size().reset_index(name='count')
+                size_col = 'count'
+                color_col = 'count'
+                title = f'{disease} Distribution by Region'
+            else:
+                # Create a dataframe of all diseases with counts by location
+                plot_data = self.regional_data.groupby(['latitude', 'longitude', 'region', 'diagnosis']).size().reset_index(name='count')
+                size_col = 'count'
+                color_col = 'count'
+                title = 'Disease Prevalence by Region'
+            
+            # Create a scatter mapbox for visualization
             fig = px.scatter_mapbox(
-                self.regional_data,
+                plot_data,
                 lat='latitude',
                 lon='longitude',
-                color=indicator,
-                size=[10] * len(self.regional_data),  # Uniform size for all points
+                color=color_col,
+                size=size_col,
+                size_max=15,
                 color_continuous_scale='Viridis',
-                hover_data=['region', indicator],
+                hover_data=['region', 'count'],
                 zoom=7,
-                title=f'{indicator} Distribution by Region',
-                mapbox_style='open-street-map'  # Using OpenStreetMap style which doesn't require a token
+                title=title,
+                mapbox_style='open-street-map'
             )
             
             # Update layout for better visibility
