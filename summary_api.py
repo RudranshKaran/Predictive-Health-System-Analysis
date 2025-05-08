@@ -16,7 +16,7 @@ load_dotenv()
 app = FastAPI(title="Patient Health Summary API")
 
 # MongoDB connection
-mongo_uri = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+mongo_uri = os.getenv("MONGO_URI")
 mongo_client = pymongo.MongoClient(
     mongo_uri,
     tls=True,
@@ -45,20 +45,46 @@ async def generate_summary(request: PatientIdRequest):
     - Previous visit details
     - Important considerations for treatment
     """
-    try:
-        # Convert string ID to ObjectId for MongoDB query
-        patient_id = ObjectId(request.patient_id)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid patient ID format")
+    print(f"Received patient_id: {request.patient_id}")  # Debug log
     
-    # Fetch patient data from MongoDB
-    patient_data = patients_collection.find_one({"_id": patient_id})
+    try:
+        # Try direct string lookup first (in case IDs are stored as strings)
+        patient_data = patients_collection.find_one({"_id": request.patient_id})
+        
+        # If not found, try with ObjectId conversion
+        if not patient_data:
+            try:
+                # Convert string ID to ObjectId for MongoDB query
+                patient_id = ObjectId(request.patient_id)
+                print(f"Converted to ObjectId: {patient_id}")  # Debug log
+                
+                # Fetch patient data from MongoDB
+                patient_data = patients_collection.find_one({"_id": patient_id})
+                print(f"Patient found with ObjectId: {patient_data is not None}")  # Debug log
+                
+            except Exception as e:
+                print(f"Error converting to ObjectId: {str(e)}")  # Debug log
+                raise HTTPException(status_code=400, detail="Invalid patient ID format")
+    except Exception as e:
+        print(f"Database error: {str(e)}")  # Debug log
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     
     if not patient_data:
+        # Extra debug - list collections and sample records
+        collections = db.list_collection_names()
+        print(f"Available collections: {collections}")
+        
+        # Check if we're using the right collection
+        if "medical_records" in collections:
+            sample = list(patients_collection.find().limit(1))
+            if sample:
+                print(f"Sample record ID format: {type(sample[0]['_id'])}")
+        
         raise HTTPException(status_code=404, detail="Patient not found")
     
     # Remove MongoDB ObjectId since it's not JSON serializable
-    patient_data["_id"] = str(patient_data["_id"])
+    if isinstance(patient_data["_id"], ObjectId):
+        patient_data["_id"] = str(patient_data["_id"])
     
     # Generate summary using Gemini API
     summary = await generate_patient_summary_with_genai(patient_data)
