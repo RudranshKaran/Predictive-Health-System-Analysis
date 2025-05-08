@@ -45,12 +45,12 @@ def main():
             st.error("Invalid Patient ID. Please enter a valid ID.")
             return False
         return True
-    
+
     if analysis_type == "Patient Summary":
         st.header("Patient Summary Analysis")
         
         # Patient ID input
-        patient_id = st.text_input("Enter Patient ID")
+        patient_id = st.text_input("Enter Patient ID", key="patient_summary_id")
         
         if patient_id and validate_patient_id(patient_id):
             # Get patient timeline
@@ -73,7 +73,7 @@ def main():
     elif analysis_type == "Biomarker Analysis":
         st.header("Biomarker Analysis")
         
-        patient_id = st.text_input("Enter Patient ID")
+        patient_id = st.text_input("Enter Patient ID", key="biomarker_id")
         if patient_id and validate_patient_id(patient_id):
             analysis = biomarker_module.analyze_biomarkers(patient_id)
             
@@ -105,7 +105,7 @@ def main():
             else:
                 st.warning("No biomarker data found for this patient ID")
                 
-    else:  # Regional Trends
+    elif analysis_type == "Regional Trends":
         st.header("Regional Health Trends")
         
         region = st.selectbox(
