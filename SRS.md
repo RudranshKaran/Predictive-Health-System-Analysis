@@ -1,6 +1,3 @@
-Here is your SRS document exported in Markdown format:
-
-```markdown
 # Software Requirements Specification (SRS)
 
 **Title:** Predictive Health System Based on Biomarker and Regional Trend Analysis  
@@ -150,6 +147,3 @@ Integrated via APIs or shared database.
 - Integration with real-time data sources (e.g., EHR systems, mobile diagnostics)  
 - AI-assisted patient triage recommendations  
 - Alert system for regional health authorities based on threshold triggers  
-```
-
-

@@ -1,13 +1,12 @@
 # Entry point for the Streamlit dashboard
 
-import pandas as pd
 import streamlit as st
+import pandas as pd
 from src.patient_summary import PatientSummary
 from src.biomarker_analysis import BiomarkerAnalysis
 from src.regional_analysis import RegionalAnalysis
 
 # Initialize the modules
-
 @st.cache_resource
 def init_modules():
     patient_module = PatientSummary()
@@ -37,13 +36,23 @@ def main():
         ["Patient Summary", "Biomarker Analysis", "Regional Trends", "Model Performance"]
     )
     
+    # Input validation helper
+    def validate_patient_id(patient_id: str) -> bool:
+        if not patient_id:
+            st.error("Please enter a Patient ID")
+            return False
+        if patient_id not in biomarker_module.biomarker_data['patient_id'].unique():
+            st.error("Invalid Patient ID. Please enter a valid ID.")
+            return False
+        return True
+    
     if analysis_type == "Patient Summary":
         st.header("Patient Summary Analysis")
         
         # Patient ID input
         patient_id = st.text_input("Enter Patient ID")
         
-        if patient_id:
+        if patient_id and validate_patient_id(patient_id):
             # Get patient timeline
             timeline = patient_module.get_visit_timeline(patient_id)
             
@@ -65,7 +74,7 @@ def main():
         st.header("Biomarker Analysis")
         
         patient_id = st.text_input("Enter Patient ID")
-        if patient_id:
+        if patient_id and validate_patient_id(patient_id):
             analysis = biomarker_module.analyze_biomarkers(patient_id)
             
             if analysis:
@@ -96,7 +105,7 @@ def main():
             else:
                 st.warning("No biomarker data found for this patient ID")
                 
-    elif analysis_type == "Regional Trends":
+    else:  # Regional Trends
         st.header("Regional Health Trends")
         
         region = st.selectbox(

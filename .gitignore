@@ -10,6 +10,9 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+etc/
+Include/
+Lib/
 
 # IDE specific files
 .vscode/
@@ -37,6 +40,4 @@ pytest_cache/
 *.rej
 *.patch
 *.diff
-.venv/pyvenv.cfg
-.venv/pyvenv.cfg
 /.venv
