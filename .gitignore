@@ -4,15 +4,14 @@
 *.pyd
 __pycache__/
 *.env
+.venv/
 *.venv/
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
-etc/
-Include/
-Lib/
+
 
 # IDE specific files
 .vscode/
