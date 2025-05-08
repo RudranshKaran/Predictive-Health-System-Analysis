@@ -5,11 +5,20 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import shap  # Add SHAP library import
 import warnings
+import os
 warnings.filterwarnings('ignore')
 
-# Load the saved model and scaler
-model = joblib.load('model/early_anemia_model.pkl')
-scaler = joblib.load('model/early_anemia_scaler.pkl')
+# Get the absolute path to the model directory
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+model_dir = os.path.join(base_dir, 'model')
+
+# Load the saved model and scaler with absolute paths
+model_path = os.path.join(model_dir, 'early_anemia_model.pkl')
+scaler_path = os.path.join(model_dir, 'early_anemia_scaler.pkl')
+
+# Load the model and scaler
+model = joblib.load(model_path)
+scaler = joblib.load(scaler_path)
 
 # Create a SHAP explainer for the model - with improved error handling
 if hasattr(model, 'predict_proba'):
