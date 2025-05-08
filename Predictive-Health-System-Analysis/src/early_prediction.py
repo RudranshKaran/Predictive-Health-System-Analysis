@@ -10,6 +10,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from imblearn.over_sampling import SMOTE
 import joblib
+import shap  # Add SHAP library import for explainable AI
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -231,6 +232,78 @@ sns.countplot(x=risk_categories)
 plt.title('Distribution of Anemia Risk Categories')
 plt.tight_layout()
 plt.savefig('model/early_predict_risk_distribution.png')
+
+# SHAP Analysis for explainable AI
+print("\n--- Generating SHAP Values for Model Interpretability ---")
+# Create a SHAP explainer based on the best model type
+if isinstance(best_model, RandomForestClassifier) or isinstance(best_model, GradientBoostingClassifier):
+    # Tree-based models use TreeExplainer
+    explainer = shap.TreeExplainer(best_model)
+elif isinstance(best_model, LogisticRegression):
+    # Linear models use LinearExplainer
+    explainer = shap.LinearExplainer(best_model, X_train_smote)
+else:
+    # Fallback to KernelExplainer which works with any model
+    explainer = shap.KernelExplainer(best_model.predict_proba, shap.sample(X_train_smote, 100))
+
+# Calculate SHAP values for the test set
+shap_values = explainer.shap_values(X_test)
+
+# If we have a binary classification model, we might get a list of SHAP values,
+# where the second element corresponds to the positive class
+shap_values_for_class1 = shap_values[1] if isinstance(shap_values, list) else shap_values
+
+# Create and save SHAP summary plot (feature importance)
+plt.figure(figsize=(12, 10))
+shap.summary_plot(shap_values_for_class1, X_test, feature_names=X.columns.tolist(), show=False)
+plt.title('SHAP Feature Importance for Anemia Risk Prediction')
+plt.tight_layout()
+plt.savefig('model/early_predict_shap_summary.png')
+plt.close()
+
+# Create and save SHAP waterfall plot for a specific individual
+# This helps understand why a specific patient was classified as high risk
+# Find a patient who is predicted as high risk but has mostly normal values
+high_risk_patients = np.where((y_probs > 0.7) & (y_test == 1))[0]
+if len(high_risk_patients) > 0:
+    patient_idx = high_risk_patients[0]
+    plt.figure(figsize=(10, 12))
+    shap.plots.waterfall(shap.Explanation(values=shap_values_for_class1[patient_idx], 
+                                        base_values=explainer.expected_value if not isinstance(explainer.expected_value, list) else explainer.expected_value[1],
+                                        data=X_test.iloc[patient_idx],
+                                        feature_names=X.columns.tolist()), show=False)
+    plt.title('SHAP Waterfall Plot - Why This Patient Is High Risk')
+    plt.tight_layout()
+    plt.savefig('model/early_predict_shap_values.png')
+    plt.close()
+
+    # Now, let's integrate with clinical ranges to show how SHAP values relate to normal/abnormal ranges
+    from clinical_ranges import get_all_parameter_evaluations
+    
+    # Convert the patient data to a dictionary with actual values
+    patient_data = {}
+    for feature in X.columns:
+        if feature in ['RBC', 'MCV', 'MCH', 'MCHC', 'RDW', 'Age', 'Gender']:
+            # For original features, we need to "unscale" them to get actual values
+            # Get the original index from X_test
+            orig_idx = X_test.index[patient_idx]
+            # Get the value from the original dataframe
+            patient_data[feature] = df.loc[orig_idx, feature]
+    
+    # Get parameter evaluations based on clinical ranges
+    clinical_evaluations = get_all_parameter_evaluations(patient_data)
+    
+    # Print clinical evaluation and corresponding SHAP values
+    print("\nClinical Analysis for Selected High-Risk Patient:")
+    for param, eval_dict in clinical_evaluations.items():
+        if param in X.columns:
+            # Find the index of this parameter in the feature list
+            feat_idx = X.columns.get_loc(param)
+            # Get the SHAP value
+            shap_val = shap_values_for_class1[patient_idx][feat_idx]
+            print(f"{param}: Value = {eval_dict['value']:.2f}, " 
+                  f"Range = {eval_dict['range']} ({eval_dict['status']}), "
+                  f"SHAP Impact = {shap_val:.4f}")
 
 print("\nEarly Anemia Risk Prediction completed!")
 print("The model can now identify patients at risk of developing anemia")
