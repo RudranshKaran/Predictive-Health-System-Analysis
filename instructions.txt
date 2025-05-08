@@ -1,0 +1,52 @@
+We are making an api that takes the user data from mongodb and gives a complete health summary of it.
+
+The user data is in the following format:
+{
+    "name": "NAME",
+    "dob": "YYYY-MM-DD",
+    "gender": "GENDER",
+    "blood_group": "BLOOD_GROUP",
+    "contact": {
+        "phone": "PHONE",
+        "email": "EMAIL"
+    },
+    "address": {
+        "street": "STREET",
+        "city": "Bangalore",
+        "district": "Bangalore Urban",
+        "state": "Karnataka",
+        "pincode": "560034"
+    },
+    "chronic_conditions": ["CONDITION1", "CONDITION2"],
+    "allergies": ["ALLERGY"],
+    "vaccinations": [
+        {"vaccine": "VACCINE_NAME", "date": "YYYY-MM-DD"}
+    ],
+    "visits": [
+        {
+            "date": "YYYY-MM-DD",
+            "hospital_name": "HOSPITAL",
+            "hospital_id": "ID",
+            "diagnosis": ["CONDITION1", "CONDITION2"],
+            "medications": [{
+                "name": "MEDICINE",
+                "dosage": "DOSAGE",
+                "duration": "DURATION days"
+            }],
+            "tests_and_scans": ["TEST1", "TEST2"],
+            "notes": "DESCRIPTION",
+            "chronic_condition_flagged": boolean,
+            "referred_to_specialist": boolean
+        }
+    ]
+}
+
+The summary should include the patients basic information in breif.
+The summary should be very professional for the doctor to understand easily. 
+The summary should keep chronic diseases in account so that it is not ignored during diagnosis.
+It should also include the allergies that the patient has.
+Primarily it should summarise all the previous visits of the patient and point out few important things that may be needed for consideration before treatement.
+
+
+The fastapi should have patient id as payload and return the summary in markdown format.
+For AI the program might use groq to summarize patient's health history.
