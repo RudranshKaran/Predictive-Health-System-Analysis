@@ -1,23 +1,26 @@
 from pymongo import MongoClient
 from datetime import datetime, UTC
+from dotenv import load_dotenv
 import os
 from groq import Groq
 import json
 import logging
+
+load_dotenv()
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Connect to MongoDB
-MONGO_URI = "mongodb+srv://tutorial_db:tutorial_db_password@predictiveanalysis.x1ye35v.mongodb.net/"
+MONGO_URI = os.getenv("MONGO_URI")
 client = MongoClient(MONGO_URI)
-db = client["Health_Summary"]
+db = os.getenv("MONGO_DB")
 medical_records = db["medical_records"]  # Single collection for all medical records
 
 # Groq client configuration
 groq_client = Groq(
-    api_key=os.environ.get("GROQ_API_KEY", "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")
+    api_key=os.environ.get("GROQ_API_KEY")
 )
 
 system_prompt = """You are a medical record generator. Generate a SINGLE JSON object containing a complete medical record. The output should follow this exact structure:

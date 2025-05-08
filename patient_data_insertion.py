@@ -1,12 +1,16 @@
 from pymongo import MongoClient
 from datetime import datetime
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Replace with your actual MongoDB URI (use Atlas URI or "mongodb://localhost:27017/")
-MONGO_URI = "mongodb+srv://tutorial_db:tutorial_db_password@predictiveanalysis.x1ye35v.mongodb.net/"
+MONGO_URI = os.getenv("MONGO_URI")
 client = MongoClient(MONGO_URI)
 
 # Select the database and collection
-db = client["Health_Summary"]
+db = os.getenv("MONGO_URI")
 patients_col = db["patients"]
 
 # Sample patient document
