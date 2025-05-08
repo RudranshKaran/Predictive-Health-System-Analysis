@@ -4,6 +4,7 @@
 *.pyd
 __pycache__/
 *.env
+.env
 .venv/
 *.venv/
 env/
@@ -11,20 +12,31 @@ venv/
 ENV/
 env.bak/
 venv.bak/
-
+.pytest_cache/
+**/__pycache__/
 
 # IDE specific files
 .vscode/
 .idea/
 *.sublime-workspace
+*.sublime-project
+.vs/
 
 # OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 
 # Logs and databases
 *.log
 *.sqlite3
+*.sqlite
+*.db
+*.sql
 
 # Test coverage
 htmlcov/
@@ -33,6 +45,9 @@ htmlcov/
 .nox/
 .cache/
 pytest_cache/
+.pytest_cache/
+coverage.xml
+*.cover
 
 # Git specific files
 *.orig
@@ -40,3 +55,25 @@ pytest_cache/
 *.patch
 *.diff
 /.venv
+
+# Data and model files
+# Uncomment if you don't want to track these files
+# *.csv
+# *.pkl
+# *.h5
+# *.joblib
+# *.model
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Documentation
+docs/_build/
+site/

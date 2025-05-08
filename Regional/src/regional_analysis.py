@@ -1,9 +1,10 @@
 import pandas as pd
 import plotly.express as px
-from typing import Dict, List
+from typing import Dict, List, Optional, Any
 import numpy as np
 from sklearn.cluster import DBSCAN
 from geopy.geocoders import Nominatim
+from src.gemini_service import GeminiService
 
 class RegionalAnalysis:
     """
@@ -25,6 +26,12 @@ class RegionalAnalysis:
         """Initialize a new RegionalAnalysis instance."""
         self.regional_data = None
         self.geolocator = Nominatim(user_agent="health_analysis")
+        try:
+            self.gemini_service = GeminiService()
+            self.gemini_available = True
+        except Exception as e:
+            print(f"Warning: Gemini service initialization failed: {str(e)}")
+            self.gemini_available = False
         
     def load_data(self, data_path: str) -> None:
         """
@@ -215,24 +222,115 @@ class RegionalAnalysis:
                     ]
                     recent_count = len(recent_cases)
                     
+                    # Get the region for this cluster
+                    # Find the most common region in the cluster
+                    cluster_indices = np.where(clustering.labels_ == cluster_id)[0]
+                    cluster_regions = condition_data.iloc[cluster_indices]['region'].value_counts()
+                    most_common_region = cluster_regions.index[0] if len(cluster_regions) > 0 else "Unknown"
+                    
                     hotspots.append({
                         'center': cluster_points.mean(axis=0).tolist(),
                         'count': cluster_size,
                         'severity': severity,
                         'recent_cases': recent_count,
-                        'radius': np.max(np.linalg.norm(cluster_points - cluster_points.mean(axis=0), axis=1))
+                        'radius': np.max(np.linalg.norm(cluster_points - cluster_points.mean(axis=0), axis=1)),
+                        'region': most_common_region
                     })
                     
             return hotspots
         return []
+        
+    def analyze_hotspot_causes(self, condition: str, region: str, hotspot_id: int = 0) -> Dict[str, Any]:
+        """
+        Analyze the potential root causes of a disease hotspot using Gemini AI.
+        
+        Args:
+            condition (str): The health condition to analyze
+            region (str): The region to analyze
+            hotspot_id (int): The index of the hotspot to analyze (if multiple exist)
+            
+        Returns:
+            Dict containing:
+                - root_causes: List of potential root causes with confidence levels
+                - interventions: List of recommended interventions with priority levels
+                - urgency_level: Assessed urgency level (low, medium, high, critical)
+                - estimated_impact: Estimated impact of interventions
+                - error: Error message if analysis failed
+        """
+        if not self.gemini_available:
+            return {
+                "error": "Gemini service is not available. Check API key configuration.",
+                "root_causes": [],
+                "interventions": [],
+                "urgency_level": "unknown",
+                "estimated_impact": ""
+            }
+            
+        # Get hotspots for the condition
+        hotspots = self.identify_hotspots(condition)
+        
+        if not hotspots or hotspot_id >= len(hotspots):
+            return {
+                "error": f"No hotspot found for {condition} at index {hotspot_id}",
+                "root_causes": [],
+                "interventions": [],
+                "urgency_level": "unknown",
+                "estimated_impact": ""
+            }
+            
+        # Get the specified hotspot
+        hotspot = hotspots[hotspot_id]
+        
+        # Get regional analysis for context
+        regional_analysis = self.analyze_regional_patterns(region)
+        
+        try:
+            # Call Gemini service to analyze the hotspot
+            analysis = self.gemini_service.analyze_disease_hotspot(
+                disease=condition,
+                region=region,
+                hotspot_data=hotspot,
+                regional_indicators=regional_analysis
+            )
+            
+            # Check if the analysis contains an error
+            if "error" in analysis:
+                print(f"Gemini API error: {analysis['error']}")
+                if "details" in analysis:
+                    print(f"Details: {analysis['details']}")
+                
+                # Return the error in a structured format
+                return {
+                    "error": f"Analysis failed: {analysis.get('error')}",
+                    "details": analysis.get("details", "No details available"),
+                    "root_causes": [],
+                    "interventions": [],
+                    "urgency_level": "unknown",
+                    "estimated_impact": ""
+                }
+            
+            return analysis
+        except Exception as e:
+            print(f"Error analyzing hotspot causes: {str(e)}")
+            return {
+                "error": f"Analysis failed: {str(e)}",
+                "root_causes": [],
+                "interventions": [],
+                "urgency_level": "unknown",
+                "estimated_impact": ""
+            }
     
-    def plot_regional_heatmap(self, disease: str = None):
+    def plot_regional_heatmap(self, disease: str = None, color_scale: str = 'Viridis', mapbox_style: str = 'open-street-map'):
         """
         Create a heatmap visualization for disease prevalence using Plotly.
         
         Args:
             disease (str, optional): The specific disease to visualize.
                 If None, visualizes all diseases with color indicating prevalence.
+            color_scale (str, optional): Color scale for the visualization.
+                Options include 'Viridis', 'Plasma', 'Inferno', 'Magma', 'Cividis', 'Turbo'.
+            mapbox_style (str, optional): Style of the base map.
+                Options include 'open-street-map', 'carto-positron', 'carto-darkmatter', 'stamen-terrain'.
             
         Returns:
             plotly.graph_objects.Figure or None: Interactive mapbox scatter plot
@@ -240,10 +338,11 @@ class RegionalAnalysis:
             Returns None if data is missing or an error occurs.
             
         Notes:
-            - Uses OpenStreetMap style for base map
-            - Color scale: Viridis
+            - Uses customizable map style for base map
+            - Customizable color scale
             - Point size indicates case count
             - Default zoom level: 7
+            - Improved hover information
         """
         if self.regional_data is None:
             return None
@@ -257,9 +356,18 @@ class RegionalAnalysis:
                 size_col = 'count'
                 color_col = 'count'
                 title = f'{disease} Distribution by Region'
+                
+                # Add percentage of total cases for this disease
+                total_cases = plot_data['count'].sum()
+                plot_data['percentage'] = (plot_data['count'] / total_cases * 100).round(1)
             else:
                 # Create a dataframe of all diseases with counts by location
                 plot_data = self.regional_data.groupby(['latitude', 'longitude', 'region', 'diagnosis']).size().reset_index(name='count')
+                
+                # Add percentage calculation
+                total_cases = plot_data['count'].sum()
+                plot_data['percentage'] = (plot_data['count'] / total_cases * 100).round(1)
+                
                 size_col = 'count'
                 color_col = 'count'
                 title = 'Disease Prevalence by Region'
@@ -271,18 +379,35 @@ class RegionalAnalysis:
                 lon='longitude',
                 color=color_col,
                 size=size_col,
-                size_max=15,
-                color_continuous_scale='Viridis',
-                hover_data=['region', 'count'],
+                size_max=20,
+                color_continuous_scale=color_scale,
+                hover_data=['region', 'count', 'percentage'],
+                hover_name='region' if 'diagnosis' not in plot_data.columns else 'diagnosis',
+                custom_data=['percentage'] if 'percentage' in plot_data.columns else None,
                 zoom=7,
                 title=title,
-                mapbox_style='open-street-map'
+                mapbox_style=mapbox_style
             )
+            
+            # Update hover template to show percentage
+            if 'percentage' in plot_data.columns:
+                fig.update_traces(
+                    hovertemplate='<b>%{hovertext}</b><br>Region: %{customdata[0]}%<br>Count: %{marker.size}<br>Percentage: %{customdata[0]}%<extra></extra>'
+                )
             
             # Update layout for better visibility
             fig.update_layout(
-                margin={"r":0,"t":30,"l":0,"b":0},
-                height=600
+                margin={"r":0,"t":50,"l":0,"b":0},
+                height=600,
+                title={
+                    'text': title,
+                    'y':0.98,
+                    'x':0.5,
+                    'xanchor': 'center',
+                    'yanchor': 'top',
+                    'font': {'size': 20}
+                },
+                legend_title_text='Case Count'
             )
             
             return fig
@@ -341,3 +466,151 @@ class RegionalAnalysis:
                 summary += f"- {indicator}: {stats['mean']:.2f} (±{stats['std']:.2f})\n"
                 
         return summary
+        
+    def get_temporal_analysis(self, region: str, disease: str = None, time_period: str = 'monthly'):
+        """
+        Analyze disease trends over time for a specific region.
+        
+        Args:
+            region (str): Name of the region to analyze
+            disease (str, optional): Specific disease to analyze. If None, analyzes all diseases.
+            time_period (str): Aggregation period - 'daily', 'weekly', 'monthly', or 'quarterly'
+            
+        Returns:
+            Dict: Temporal analysis results containing:
+                - time_series: Dict mapping time periods to case counts
+                - trend: Overall trend description ('increasing', 'decreasing', 'stable')
+                - peak_period: Period with highest case count
+                - growth_rate: Rate of change over the entire period
+        """
+        if self.regional_data is None:
+            return None
+            
+        # Filter data for the specified region
+        region_data = self.regional_data[self.regional_data['region'] == region].copy()
+        
+        # Filter for specific disease if provided
+        if disease:
+            region_data = region_data[region_data['diagnosis'] == disease]
+            
+        # Ensure visit_date is datetime
+        if 'visit_date' in region_data.columns:
+            region_data['visit_date'] = pd.to_datetime(region_data['visit_date'])
+            
+            # Group by time period
+            if time_period == 'daily':
+                grouped = region_data.groupby(region_data['visit_date'].dt.date).size()
+            elif time_period == 'weekly':
+                grouped = region_data.groupby(pd.Grouper(key='visit_date', freq='W')).size()
+            elif time_period == 'quarterly':
+                grouped = region_data.groupby(pd.Grouper(key='visit_date', freq='Q')).size()
+            else:  # default to monthly
+                grouped = region_data.groupby(pd.Grouper(key='visit_date', freq='M')).size()
+                
+            # Convert to dictionary with string dates as keys
+            time_series = {str(date)[:10]: count for date, count in grouped.items()}
+            
+            # Calculate trend
+            if len(grouped) > 1:
+                first_count = grouped.iloc[0]
+                last_count = grouped.iloc[-1]
+                growth_rate = ((last_count - first_count) / first_count) if first_count > 0 else 0
+                
+                if growth_rate > 0.1:
+                    trend = 'increasing'
+                elif growth_rate < -0.1:
+                    trend = 'decreasing'
+                else:
+                    trend = 'stable'
+                    
+                peak_period = str(grouped.idxmax())[:10]
+                
+                return {
+                    'time_series': time_series,
+                    'trend': trend,
+                    'peak_period': peak_period,
+                    'growth_rate': growth_rate
+                }
+                
+        return None
+        
+    def generate_comparative_visualization(self, regions=None, disease=None):
+        """
+        Generate a comparative visualization of disease prevalence across multiple regions.
+        
+        Args:
+            regions (List[str], optional): List of regions to compare. If None, uses all regions.
+            disease (str, optional): Specific disease to compare. If None, compares total case counts.
+            
+        Returns:
+            plotly.graph_objects.Figure: Bar chart comparing disease prevalence across regions
+        """
+        if self.regional_data is None:
+            return None
+            
+        try:
+            # If no regions specified, use all unique regions
+            if not regions:
+                regions = self.regional_data['region'].unique()
+                
+            # Prepare data for comparison
+            comparison_data = []
+            
+            for region in regions:
+                region_data = self.regional_data[self.regional_data['region'] == region]
+                
+                if disease:
+                    # Count cases of specific disease
+                    case_count = len(region_data[region_data['diagnosis'] == disease])
+                    comparison_data.append({
+                        'Region': region,
+                        'Cases': case_count,
+                        'Disease': disease
+                    })
+                else:
+                    # Group by diagnosis and count
+                    diagnoses = region_data['diagnosis'].value_counts()
+                    for diagnosis, count in diagnoses.items():
+                        comparison_data.append({
+                            'Region': region,
+                            'Cases': count,
+                            'Disease': diagnosis
+                        })
+            
+            # Create DataFrame for visualization
+            df = pd.DataFrame(comparison_data)
+            
+            # Create visualization
+            import plotly.express as px
+            
+            if disease:
+                # Simple bar chart for single disease across regions
+                fig = px.bar(
+                    df,
+                    x='Region',
+                    y='Cases',
+                    title=f'{disease} Cases by Region',
+                    color='Region',
+                    text='Cases'
+                )
+            else:
+                # Grouped bar chart for multiple diseases across regions
+                fig = px.bar(
+                    df,
+                    x='Region',
+                    y='Cases',
+                    color='Disease',
+                    title='Disease Distribution by Region',
+                    barmode='group'
+                )
+                
+            fig.update_layout(
+                xaxis_title='Region',
+                yaxis_title='Number of Cases',
+                legend_title='Disease'
+            )
+            
+            return fig
+        except Exception as e:
+            print(f"Error creating comparative visualization: {str(e)}")
+            return None
