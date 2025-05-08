@@ -40,17 +40,20 @@ st.markdown("""
         font-size: 1.2rem;
     }
     .visit-summary {
-        background-color: #272727;
+        background-color: #f8f9fa;
         border-radius: 8px;
         padding: 15px;
         margin-bottom: 15px;
+        color: #212529;
+        border: 1px solid #dee2e6;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
     .visit-date {
         font-weight: 600;
-        color: #4c78a8;
+        color: #0d6efd;
     }
     .diagnosis {
-        color: #ff7f0e;
+        color: #dc3545;
         font-weight: 600;
     }
     .chronic-condition {
@@ -62,10 +65,11 @@ st.markdown("""
         font-weight: 500;
     }
     .recommendation {
-        background-color: #272727;
-        border-left: 3px solid #4c78a8;
+        background-color: #f8f9fa;
+        border-left: 3px solid #0d6efd;
         padding: 10px;
         margin-bottom: 10px;
+        color: #212529;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -159,7 +163,7 @@ def display_patient_info(patient_info):
     with col2:
         # Display age as the primary metric if available
         if 'age' in patient_info:
-            st.metric("Age", f"{patient_info['age']} years")
+            st.metric("Age", f"{patient_info['age']}")
         else:
             # Fallback if age is not available
             st.metric("Age", "N/A")
@@ -216,7 +220,7 @@ def generate_patient_overview(markdown_content):
         elif section.startswith("Chronological Visit Summary"):
             visits = re.findall(r'\*\s+\*\*.*?\*\*', section)
             visits_count = len(visits)
-            
+                
             # Extract the most recent diagnosis
             diagnosis_matches = re.findall(r'\*\*Diagnosis:\*\*\s*(.*?)(?=\n)', section)
             if diagnosis_matches:
@@ -299,7 +303,9 @@ def enhance_markdown_display(markdown_content):
                 visit_summary_html += '<div class="visit-summary">'
                 if ":" in visit_date_line:
                     date_part = visit_date_line.split(":")[0]
-                    visit_summary_html += f'<div class="visit-date">{date_part}</div>'
+                    # Remove the extra asterisks from the date display
+                    clean_date_part = date_part.replace('**', '')
+                    visit_summary_html += f'<div class="visit-date">{clean_date_part}</div>'
                     
                 for line in visit_lines[1:]:
                     if "Diagnosis:" in line:
@@ -428,51 +434,54 @@ def main():
     # Simple and clean interface - just the Patient ID input
     st.subheader("Enter Patient Information")
     
-    # Input field for Patient ID
-    patient_id = st.text_input("Patient ID:", placeholder="Enter patient ID number")
+    # Input field for Patient ID with updated placeholder and help text
+    patient_id = st.text_input(
+        "Patient ID:", 
+        placeholder="Enter 14-digit patient ID number",
+        help="Enter the 14-digit patient ID (not the MongoDB ObjectID)"
+    )
     
     # Generate button
     if st.button("Generate Health Summary", type="primary", use_container_width=True):
         if patient_id:
-            with st.spinner("Generating comprehensive health summary..."):
-                response = get_patient_summary(patient_id)
-                if response:
-                    markdown_content = extract_markdown_content(response)
-                    
-                    if markdown_content:
-                        st.success("Health summary generated successfully!")
-                        st.markdown("---")
+            # Basic validation for patient ID format
+            if patient_id.isdigit() and len(patient_id) == 14:
+                with st.spinner("Generating comprehensive health summary..."):
+                    response = get_patient_summary(patient_id)
+                    if response:
+                        markdown_content = extract_markdown_content(response)
                         
-                        # Parse and display patient info
-                        patient_info = parse_patient_info(markdown_content)
-                        display_patient_info(patient_info)
-                        
-                        st.markdown("# Detailed Patient Health Information", unsafe_allow_html=True)
-                        
-                        # Display enhanced formatted content
-                        enhanced_content, visit_summary_html = enhance_markdown_display(markdown_content)
-                        st.markdown(enhanced_content, unsafe_allow_html=True)
-                        
-                        # Add collapsible visit summary section
-                        if visit_summary_html:
-                            with st.expander("Chronological Visit Summary"):
-                                st.markdown(visit_summary_html, unsafe_allow_html=True)
-                        
-                        # Add disclaimer at the bottom
-                        # st.markdown("---")
-                        st.markdown("""
-                        <div style="font-size: 14px; color: #888888; margin-top: 30px; padding: 10px; border-top: 1px solid #444444;">
-                        <strong>Disclaimer:</strong> This health summary is generated using artificial intelligence and is intended solely to assist healthcare professionals. 
-                        The information provided may not be 100% accurate and should not replace clinical judgment or a thorough review of the patient's medical records. 
-                        This tool is meant to supplement, not substitute, professional medical expertise. The final diagnosis and treatment decisions always rest with the attending physician.
-                        </div>
-                        """, unsafe_allow_html=True)
-                        
-                        # Option to view raw markdown - commented out as requested
-                        # with st.expander("View Raw Markdown"):
-                        #     st.code(markdown_content, language="markdown")
-                else:
-                    st.error("Failed to generate health summary. Please verify the patient ID and try again.")
+                        if markdown_content:
+                            st.success("Health summary generated successfully!")
+                            st.markdown("---")
+                            
+                            # Parse and display patient info
+                            patient_info = parse_patient_info(markdown_content)
+                            display_patient_info(patient_info)
+                            
+                            st.markdown("# Detailed Patient Health Information", unsafe_allow_html=True)
+                            
+                            # Display enhanced formatted content
+                            enhanced_content, visit_summary_html = enhance_markdown_display(markdown_content)
+                            st.markdown(enhanced_content, unsafe_allow_html=True)
+                            
+                            # Add collapsible visit summary section
+                            if visit_summary_html:
+                                with st.expander("Chronological Visit Summary"):
+                                    st.markdown(visit_summary_html, unsafe_allow_html=True)
+                            
+                            # Add disclaimer at the bottom
+                            st.markdown("""
+                            <div style="font-size: 14px; color: #888888; margin-top: 30px; padding: 10px; border-top: 1px solid #444444;">
+                            <strong>Disclaimer:</strong> This health summary is generated using artificial intelligence and is intended solely to assist healthcare professionals. 
+                            The information provided may not be 100% accurate and should not replace clinical judgment or a thorough review of the patient's medical records. 
+                            This tool is meant to supplement, not substitute, professional medical expertise. The final diagnosis and treatment decisions always rest with the attending physician.
+                            </div>
+                            """, unsafe_allow_html=True)
+                    else:
+                        st.error("Failed to generate health summary. Please verify the patient ID and try again.")
+            else:
+                st.error("Please enter a valid 14-digit patient ID number")
         else:
             st.warning("Please enter a valid patient ID to generate the health summary.")
 

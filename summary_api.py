@@ -48,25 +48,25 @@ async def generate_summary(request: PatientIdRequest):
     print(f"Received patient_id: {request.patient_id}")  # Debug log
     
     try:
-        # Try direct string lookup first (in case IDs are stored as strings)
-        patient_data = patients_collection.find_one({"_id": request.patient_id})
+        # Look for the patient using the 14-digit patient_id field
+        patient_data = patients_collection.find_one({"patient_id": request.patient_id})
         
-        # If not found, try with ObjectId conversion
+        # Fall back to trying _id (for backward compatibility)
         if not patient_data:
+            print(f"Patient not found with patient_id, trying ObjectId...")
             try:
                 # Convert string ID to ObjectId for MongoDB query
-                patient_id = ObjectId(request.patient_id)
-                print(f"Converted to ObjectId: {patient_id}")  # Debug log
+                object_id = ObjectId(request.patient_id)
+                print(f"Converted to ObjectId: {object_id}")
                 
-                # Fetch patient data from MongoDB
-                patient_data = patients_collection.find_one({"_id": patient_id})
-                print(f"Patient found with ObjectId: {patient_data is not None}")  # Debug log
-                
+                # Fetch patient data from MongoDB using ObjectId
+                patient_data = patients_collection.find_one({"_id": object_id})
+                print(f"Patient found with ObjectId: {patient_data is not None}")
             except Exception as e:
-                print(f"Error converting to ObjectId: {str(e)}")  # Debug log
-                raise HTTPException(status_code=400, detail="Invalid patient ID format")
+                print(f"Error converting to ObjectId: {str(e)}")
+                # Don't raise an exception yet, we'll handle the not-found case below
     except Exception as e:
-        print(f"Database error: {str(e)}")  # Debug log
+        print(f"Database error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     
     if not patient_data:
@@ -78,6 +78,7 @@ async def generate_summary(request: PatientIdRequest):
         if "medical_records" in collections:
             sample = list(patients_collection.find().limit(1))
             if sample:
+                print(f"Sample record structure: patient_id exists: {'patient_id' in sample[0]}")
                 print(f"Sample record ID format: {type(sample[0]['_id'])}")
         
         raise HTTPException(status_code=404, detail="Patient not found")
