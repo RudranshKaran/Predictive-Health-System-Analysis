@@ -3,12 +3,46 @@ import numpy as np
 import joblib
 import matplotlib.pyplot as plt
 import seaborn as sns
+import shap  # Add SHAP library import
 import warnings
 warnings.filterwarnings('ignore')
 
 # Load the saved model and scaler
 model = joblib.load('model/early_anemia_model.pkl')
 scaler = joblib.load('model/early_anemia_scaler.pkl')
+
+# Create a SHAP explainer for the model - with improved error handling
+if hasattr(model, 'predict_proba'):
+    # For tree-based models (RandomForest, GradientBoosting)
+    try:
+        # First attempt tree explainer which is faster and more accurate for tree-based models
+        explainer = shap.TreeExplainer(model)
+        print("Using TreeExplainer for SHAP analysis")
+    except Exception as e:
+        print(f"TreeExplainer failed: {str(e)}")
+        try:
+            # Fallback to Permutation explainer which is more robust for different model types
+            # Create a small background dataset for the explainer
+            feature_names = model.feature_names_in_ if hasattr(model, 'feature_names_in_') else None
+            n_features = len(feature_names) if feature_names is not None else 12
+            background_data = np.zeros((10, n_features))
+            
+            # Define a predict function that returns probabilities for the positive class only
+            def predict_proba_positive_class(X):
+                return model.predict_proba(X)[:, 1]
+            
+            explainer = shap.PermutationExplainer(
+                predict_proba_positive_class,
+                background_data,
+                feature_names=feature_names
+            )
+            print("Using PermutationExplainer as fallback for SHAP analysis")
+        except Exception as e:
+            print(f"All SHAP explainers failed: {str(e)}")
+            explainer = None
+else:
+    print("Model does not support SHAP analysis")
+    explainer = None
 
 def anemia_type_detector(gender, hb, mcv, mch, mchc, rdw=None, rbc=None, age=None):
     """
@@ -535,6 +569,7 @@ def print_detailed_analysis(patient_data, prediction=None, probability=None, cat
         _, _, _, analysis = predict_early_anemia_risk(patient_data, model, scaler, detailed=True)
     
     gender = "Male" if patient_data['Gender'] == 1 else "Female"
+    gender_str = "male" if patient_data['Gender'] == 1 else "female"
     
     print("\n==================================================")
     print("           COMPREHENSIVE BLOOD ANALYSIS           ")
@@ -589,6 +624,174 @@ def print_detailed_analysis(patient_data, prediction=None, probability=None, cat
             print(f"  Risk floor: {pattern['risk_adjustment']}")
     else:
         print("• No specific anemia patterns detected")
+    
+    # SHAP Analysis - FIXED IMPLEMENTATION
+    if explainer is not None and prediction is not None:
+        print("\n----- EXPLAINABLE AI ANALYSIS (SHAP) -----")
+        
+        # Create preprocessing for the patient data to match model input format
+        patient_df = pd.DataFrame([patient_data])
+        
+        # Extract feature_names_in_ from scaler if available
+        if hasattr(scaler, 'feature_names_in_'):
+            training_features = list(scaler.feature_names_in_)
+        else:
+            # Fallback to expected features
+            training_features = ['RBC', 'MCV', 'MCH', 'MCHC', 'RDW', 'Age', 'Gender',
+                              'RBC_MCV_Ratio', 'RDW_MCV_Ratio', 'MCH_MCHC_Ratio',
+                              'Age_RBC_Interaction', 'RDW_Age_Interaction']
+        
+        # Set default values for missing required base features
+        required_features = ['RBC', 'MCV', 'MCH', 'MCHC', 'RDW', 'Age', 'Gender']
+        for feature in required_features:
+            if feature not in patient_df.columns:
+                if feature == 'Age':
+                    patient_df[feature] = 45
+                elif feature == 'RBC':
+                    patient_df[feature] = 5.0 if patient_data.get('Gender') == 1 else 4.5
+                elif feature == 'RDW':
+                    patient_df[feature] = 13.0
+                else:
+                    patient_df[feature] = 0
+        
+        # Add derived features
+        if 'RBC' in patient_df.columns and 'MCV' in patient_df.columns:
+            patient_df['RBC_MCV_Ratio'] = patient_df['RBC'] / patient_df['MCV']
+        if 'RDW' in patient_df.columns and 'MCV' in patient_df.columns:
+            patient_df['RDW_MCV_Ratio'] = patient_df['RDW'] / patient_df['MCV']
+        if 'MCH' in patient_df.columns and 'MCHC' in patient_df.columns:
+            patient_df['MCH_MCHC_Ratio'] = patient_df['MCH'] / patient_df['MCHC']
+        if 'Age' in patient_df.columns and 'RBC' in patient_df.columns:
+            patient_df['Age_RBC_Interaction'] = patient_df['Age'] * patient_df['RBC'] / 100
+        if 'Age' in patient_df.columns and 'RDW' in patient_df.columns:
+            patient_df['RDW_Age_Interaction'] = patient_df['RDW'] * np.log(patient_df['Age'] + 1)
+        
+        # Remove Hemoglobin and other non-training features
+        columns_to_drop = ['Hemoglobin', 'MCH_MCV_Ratio', 'MCHC_MCV_Ratio']
+        for col in columns_to_drop:
+            if col in patient_df.columns:
+                patient_df.drop(columns=[col], inplace=True, errors='ignore')
+        
+        # Reindex to ensure correct feature order
+        patient_df = patient_df.reindex(columns=training_features, fill_value=0)
+        
+        # Scale features
+        patient_scaled = pd.DataFrame(
+            scaler.transform(patient_df),
+            columns=patient_df.columns
+        )
+        
+        try:
+            # Calculate SHAP values for this patient - IMPROVED ERROR HANDLING
+            if isinstance(explainer, shap.TreeExplainer):
+                # For TreeExplainer
+                shap_values = explainer.shap_values(patient_scaled)
+                
+                # TreeExplainer might return a list where index 1 is positive class values
+                if isinstance(shap_values, list) and len(shap_values) > 1:
+                    patient_shap_values = shap_values[1][0]
+                    expected_value = explainer.expected_value[1] if isinstance(explainer.expected_value, list) and len(explainer.expected_value) > 1 else explainer.expected_value
+                else:
+                    patient_shap_values = shap_values[0]
+                    expected_value = explainer.expected_value if not isinstance(explainer.expected_value, list) else explainer.expected_value[0]
+            
+            elif isinstance(explainer, shap.PermutationExplainer):
+                # For PermutationExplainer
+                shap_values = explainer(patient_scaled)
+                patient_shap_values = shap_values.values[0]
+                # PermutationExplainer doesn't have expected_value attribute, set to 0.5 default
+                expected_value = 0.5  # Default value for binary classification
+            
+            else:
+                # Generic approach
+                shap_values = explainer(patient_scaled)
+                
+                # Check if the result is a shap.Explanation object
+                if isinstance(shap_values, shap.Explanation):
+                    patient_shap_values = shap_values.values[0]
+                    expected_value = shap_values.base_values[0]
+                else:
+                    # Try to extract values based on shape
+                    if hasattr(shap_values, 'shape') and len(shap_values.shape) > 1:
+                        patient_shap_values = shap_values[0]
+                    else:
+                        patient_shap_values = shap_values
+                    
+                    # Try to get expected value
+                    expected_value = getattr(explainer, 'expected_value', 0.5)
+            
+            # Ensure expected_value is a scalar
+            if hasattr(expected_value, '__len__') and not isinstance(expected_value, str):
+                expected_value = expected_value[0]
+            
+            # Get features sorted by absolute SHAP value (most important first)
+            feature_importance = sorted(zip(training_features, patient_shap_values), 
+                                      key=lambda x: abs(x[1]), reverse=True)
+            
+            print(f"\nBase risk score: {float(expected_value):.4f}")
+            print("Top features influencing this patient's risk prediction:")
+            
+            # Define reference ranges for comparison
+            reference_ranges = {
+                'Hemoglobin': {'male': (13.5, 17.5), 'female': (12.0, 15.5)},
+                'MCH': (27.0, 33.0),
+                'MCHC': (32.0, 36.0),
+                'MCV': (80.0, 100.0),
+                'RDW': (11.5, 14.5),
+                'RBC': {'male': (4.5, 5.9), 'female': (4.0, 5.2)}
+            }
+            
+            # Show top 5 most important features
+            for feature, value in feature_importance[:5]:
+                impact = "INCREASES" if value > 0 else "DECREASES"
+                if feature in patient_data:
+                    original_value = patient_data[feature]
+                    # Check if this feature is in our reference ranges
+                    if feature in ['RBC', 'MCV', 'MCH', 'MCHC', 'RDW']:
+                        if feature == 'RBC':
+                            ref_range = reference_ranges['RBC'][gender_str]
+                        else:
+                            ref_range = reference_ranges[feature]
+                        
+                        # Determine if value is low, normal or high
+                        value_status = "LOW" if original_value < ref_range[0] else \
+                                    "HIGH" if original_value > ref_range[1] else \
+                                    "normal"
+                        
+                        print(f"• {feature} = {original_value:.2f} ({value_status}): {impact} risk by {abs(value):.4f}")
+                    else:
+                        print(f"• {feature} = {original_value:.2f}: {impact} risk by {abs(value):.4f}")
+                else:
+                    # For derived features
+                    print(f"• {feature}: {impact} risk by {abs(value):.4f}")
+            
+            # Create and save individual patient SHAP plot
+            try:
+                plt.figure(figsize=(10, 6))
+                
+                # Create an explanation object for the waterfall plot
+                explanation = shap.Explanation(
+                    values=patient_shap_values,
+                    base_values=float(expected_value),
+                    data=patient_scaled.iloc[0].values,
+                    feature_names=training_features
+                )
+                
+                shap.plots.waterfall(explanation, show=False)
+                plt.title('SHAP Analysis: Why This Patient Received This Risk Score')
+                plt.tight_layout()
+                plt.savefig('model/patient_analysis_shap_importance.png')
+                plt.close()
+                
+                print("\nSHAP analysis visualization saved to 'model/patient_analysis_shap_importance.png'")
+                print("This visualization shows exactly how each feature contributed to the final risk score.")
+            except Exception as plot_err:
+                print(f"\nCould not generate SHAP plot: {str(plot_err)}")
+                print("However, the numerical SHAP values were successfully computed.")
+        
+        except Exception as e:
+            print(f"\nCould not generate SHAP analysis: {str(e)}")
+            print("This may happen if the model structure is not compatible with SHAP explainer.")
     
     # Model Prediction
     if prediction is not None:
