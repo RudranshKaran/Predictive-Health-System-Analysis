@@ -151,15 +151,14 @@ def main():
     model, scaler = load_model()
     # Create SHAP explainer
     explainer = create_shap_explainer(model)
-    
-    # Sidebar navigation with improved design
+      # Sidebar navigation with improved design
     with st.sidebar:
         st.title("Anemia Prediction")
         
         selected = option_menu(
             menu_title="Navigation",
-            options=["Home", "Prediction", "Visualizations", "Educational Content", "About"],
-            icons=["house", "clipboard-check", "graph-up", "book", "info-circle"],
+            options=["Hackathon", "Home", "Prediction", "Visualizations", "Educational Content", "About"],
+            icons=["award", "house", "clipboard-check", "graph-up", "book", "info-circle"],
             menu_icon="cast",
             default_index=0,
             styles={
@@ -175,9 +174,12 @@ def main():
             "This application helps predict anemia risk based on blood parameters. "
             "It uses machine learning to detect early signs even when values appear normal."
         )
-    
-    # Page content based on navigation
-    if selected == "Home":
+      # Page content based on navigation
+    if selected == "Hackathon":
+        from landing_page import show_landing_page
+        show_landing_page()
+        
+    elif selected == "Home":
         from home import show_home_page
         show_home_page()
         
