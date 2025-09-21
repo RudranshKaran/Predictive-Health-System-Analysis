@@ -19,6 +19,8 @@ import SearchableDropdown from './components/SearchableDropdown';
 import PatientHistoryColumn from './components/PatientHistoryColumn';
 import ActiveMedications from './components/ActiveMedications';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:5000';
+
 const DrugInteractionDetail = ({ interaction }) => (
     <div>
         <h3 className="text-xl font-bold text-red-700 mb-2">Drug Interaction Alert</h3>
@@ -98,160 +100,190 @@ const mockRegionalData = {
 };
 
 // --- Sub-Components (Moved outside main App component to prevent re-renders) ---
-
-const ContextualAIPrompt = ({ text }) => (
-  <div className="mt-2 p-2 bg-yellow-100 border border-yellow-300 rounded-md text-xs text-yellow-800 flex items-center">
+  
+  const ContextualAIPrompt = ({ text }) => (
+    <div className="mt-2 p-2 bg-yellow-100 border border-yellow-300 rounded-md text-xs text-yellow-800 flex items-center">
     <span className="font-bold mr-1
     ">Expert Tip:</span> {text}
-  </div>
-);
+    </div>
+  );
 
 const NewNoteColumn = ({ noteText, setNoteText, handleProcessNotes, isProcessing }) => {
-  const [isListening, setIsListening] = useState(false);
-  const [contextualPrompt, setContextualPrompt] = useState('');
-  const recognitionRef = useRef(null);
+    const [isListening, setIsListening] = useState(false);
+    const [contextualPrompt, setContextualPrompt] = useState('');
+    const recognitionRef = useRef(null);
 
-  useEffect(() => {
-    if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = true;
-      recognitionRef.current.interimResults = true;
-      recognitionRef.current.lang = 'en-IN';
+    useEffect(() => {
+      if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        recognitionRef.current = new SpeechRecognition();
+        recognitionRef.current.continuous = true;
+        recognitionRef.current.interimResults = true;
+        recognitionRef.current.lang = 'en-IN';
 
-      recognitionRef.current.onresult = (event) => {
+        recognitionRef.current.onresult = (event) => {
         let final_transcript = '';
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
             final_transcript += event.results[i][0].transcript;
           }
         }
         if (final_transcript) {
             setNoteText(prev => prev + final_transcript + '. ');
-        }
-      };
+          }
+        };
 
-      recognitionRef.current.onend = () => {
-        setIsListening(false);
-      };
-    }
+        recognitionRef.current.onend = () => {
+          setIsListening(false);
+        };
+      }
   }, [setNoteText]);
 
-  useEffect(() => {
-    if (noteText.toLowerCase().includes('fever')) {
-      setContextualPrompt("Regional Alert: Dengue cases are high in your area. Consider checking for retro-orbital pain.");
-    } else {
-      setContextualPrompt('');
-    }
-  }, [noteText]);
+    useEffect(() => {
+      if (noteText.toLowerCase().includes('fever')) {
+        setContextualPrompt("Regional Alert: Dengue cases are high in your area. Consider checking for retro-orbital pain.");
+      } else {
+        setContextualPrompt('');
+      }
+    }, [noteText]);
 
-  const handleListen = () => {
-    if (isListening) {
-      recognitionRef.current.stop();
-      setIsListening(false);
-    } else {
-      recognitionRef.current.start();
-      setIsListening(true);
-    }
+    const handleListen = () => {
+      if (isListening) {
+        recognitionRef.current.stop();
+        setIsListening(false);
+      } else {
+        recognitionRef.current.start();
+        setIsListening(true);
+      }
+    };
+
+    return (
+      <div className="w-1/3 p-4 mx-4 flex flex-col">
+        <div className="flex justify-between items-center">
+          <h2 className="text-lg font-semibold" style={{color: '#2C3E50'}}>Diagnosis</h2>
+          <button onClick={handleListen} title="Start/Stop Dictation" className={`p-2 rounded-full ${isListening ? 'bg-red-100 animate-pulse' : 'bg-gray-100 hover:bg-gray-200'}`}>
+            <MicIcon isListening={isListening} />
+          </button>
+        </div>
+        <textarea value={noteText} onChange={(e) => setNoteText(e.target.value)} className="w-full flex-1 p-3 text-sm bg-white rounded-md border border-gray-300 focus:ring-2 focus:ring-[#26A69A] mt-2" placeholder="Type or use voice-to-text..."></textarea>
+        {contextualPrompt && <ContextualAIPrompt text={contextualPrompt} />}
+        <button onClick={handleProcessNotes} disabled={isProcessing} style={{backgroundColor: '#FF6B6B'}} className="mt-4 w-full text-white font-semibold py-2.5 px-4 rounded-lg hover:opacity-90 disabled:bg-gray-400 flex items-center justify-center"> {isProcessing ? 'Processing...' : 'Process Notes →'} </button>
+      </div>
+    );
   };
 
-  return (
-    <div className="w-1/3 p-4 mx-4 flex flex-col">
-      <div className="flex justify-between items-center">
-        <h2 className="text-lg font-semibold" style={{color: '#2C3E50'}}>Diagnosis</h2>
-        <button onClick={handleListen} title="Start/Stop Dictation" className={`p-2 rounded-full ${isListening ? 'bg-red-100 animate-pulse' : 'bg-gray-100 hover:bg-gray-200'}`}>
-          <MicIcon isListening={isListening} />
-        </button>
-      </div>
-      <textarea value={noteText} onChange={(e) => setNoteText(e.target.value)} className="w-full flex-1 p-3 text-sm bg-white rounded-md border border-gray-300 focus:ring-2 focus:ring-[#26A69A] mt-2" placeholder="Type or use voice-to-text..."></textarea>
-      {contextualPrompt && <ContextualAIPrompt text={contextualPrompt} />}
-      <button onClick={handleProcessNotes} disabled={isProcessing} style={{backgroundColor: '#FF6B6B'}} className="mt-4 w-full text-white font-semibold py-2.5 px-4 rounded-lg hover:opacity-90 disabled:bg-gray-400 flex items-center justify-center"> {isProcessing ? 'Processing...' : 'Process Notes →'} </button>
-    </div>
-  );
-};
+const AIAssistedVerification = ({ isProcessing, aiResult, ddiAlerts }) => {
+    const ConfidenceBadge = ({ confidence }) => {
+        const percentage = (confidence * 100).toFixed(0);
+        return (
+            <span className="text-sm font-semibold text-green-700 bg-green-100 px-2 py-1 rounded-full">
+                {percentage}%
+            </span>
+        );
+    };
 
-const AIAssistedVerification = ({ isProcessing, aiResult, ddiAlerts }) => {  
     return (
-      <div className="w-1/3 bg-white p-4 rounded-lg shadow-sm">
-        <h2 className="text-lg font-semibold" style={{ color: '#2C3E50' }}>AI-Assisted Verification</h2>
-        <div className="h-full bg-gray-50 rounded-lg p-4 space-y-4 overflow-y-auto mt-4">
-          {isProcessing && (
-            <div className="flex items-center justify-center h-full">
-              <svg className="animate-spin -ml-1 mr-3 h-5 w-5" style={{ color: '#26A69A' }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              <p className="text-gray-600">Analyzing notes...</p>
-            </div>
-          )}
-          {!isProcessing && !aiResult && (
-            <div className="flex items-center justify-center h-full text-center">
-              <p className="text-gray-500">AI fields will appear here.<br />Click 'Process Notes' to begin.</p>
-            </div>
-          )}
-          {aiResult && (
-            <div className="flex flex-col justify-between h-full">
-                <div className="space-y-4">
-                  {ddiAlerts.length > 0 && (
-                    <div className="p-3 bg-red-100 border-l-4 border-red-400 text-red-800">
-                      <h4 className="font-bold text-sm">Drug-Drug Interaction Alert!</h4>
-                      {ddiAlerts.map((alert, i) => (
-                        <div key={i} className="mt-2">
-                            <p className="font-semibold">{alert.drugA} + {alert.drugB} ({alert.severity})</p>
-                            <p className="text-sm">{alert.description}</p>
-                        </div>
-                      ))}
+        <div className="w-1/3 bg-gray-50 p-4 rounded-lg shadow-inner overflow-y-auto">
+            <h2 className="text-xl font-bold mb-4" style={{ color: '#2C3E50' }}>AI-Assisted Verification</h2>
+            
+            <div className="h-full space-y-4">
+                {isProcessing && (
+                    <div className="flex items-center justify-center h-full">
+                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5" style={{ color: '#26A69A' }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <p className="text-gray-600">Analyzing notes...</p>
                     </div>
-                  )}
+                )}
+                {!isProcessing && !aiResult && (
+                    <div className="flex items-center justify-center h-full text-center">
+                        <p className="text-gray-500">AI fields will appear here.<br />Click 'Process Notes' to begin.</p>
+                    </div>
+                )}
+                {aiResult && (
+                    <div className="flex flex-col justify-between h-full">
+                        <div className="space-y-5">
+                            {aiResult.missingInfo?.length > 0 && (
+                                <div className="p-3 bg-orange-100 border-l-4 border-orange-400 text-orange-800">
+                                    <h4 className="font-bold text-sm">Missing Information</h4>
+                                    <p className="text-sm mt-1">{aiResult.missingInfo[0]}</p>
+                                </div>
+                            )}
 
-                  {aiResult.missingInfo?.length > 0 && (
-                    <div className="p-3 bg-yellow-100 border-l-4 border-yellow-400 text-yellow-800">
-                      <h4 className="font-bold text-sm">Missing Information</h4>
-                      <p className="text-sm">{aiResult.missingInfo[0]}</p>
-                    </div>
-                  )}
-                  
-                  {aiResult.symptoms?.length > 0 && (
-                    <div>
-                        <h4 className="text-sm font-semibold text-gray-600 mb-2">Symptoms</h4>
-                        <div className="space-y-1">
-                            {aiResult.symptoms.map((s, i) => (
-                                <div key={i} className="flex justify-between items-center bg-white p-2 rounded text-sm shadow-sm"><p>{s.value}</p><ConditionTag text={`${(s.confidence * 100).toFixed(0)}%`} color="green" /></div>
-                            ))}
+                            {ddiAlerts.length > 0 && (
+                               <div className="p-3 bg-red-100 border-l-4 border-red-400 text-red-800">
+                                   <h4 className="font-bold text-sm">Drug-Drug Interaction Alert!</h4>
+                                   {ddiAlerts.map((alert, i) => (
+                                       <div key={i} className="mt-2 text-sm">
+                                           <p className="font-semibold">{alert.drugA} + {alert.drugB} ({alert.severity})</p>
+                                           <p>{alert.description}</p>
+                                       </div>
+                                   ))}
+                               </div>
+                            )}
+
+                            {aiResult.symptoms?.length > 0 && (
+                                <div>
+                                    <h3 className="text-md font-semibold text-gray-700 mb-2">Symptoms</h3>
+                                    <div className="space-y-2">
+                                        {aiResult.symptoms.map((s, i) => (
+                                            <div key={i} className="flex justify-between items-center bg-white p-3 rounded-lg shadow-sm text-gray-800">
+                                                <p>{s.value}</p>
+                                                <ConfidenceBadge confidence={s.confidence} />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+            
+                            <div>
+                               <h3 className="text-md font-semibold text-gray-700 mb-2">Suggested Diagnosis</h3>
+                               {aiResult.diagnosis?.length > 0 ? (
+                                   <div className="space-y-2">
+                                       {aiResult.diagnosis.map((d, i) => (
+                                            <div key={i} className={`flex justify-between items-center bg-white p-3 rounded-lg shadow-sm border-l-4 ${d.suggestion ? 'border-blue-400' : 'border-gray-300'}`}>
+                                                <div>
+                                                    <p className="font-semibold text-gray-800">{d.description}</p>
+                                                    {d.code && d.code !== 'N/A' && <p className="text-sm text-gray-500">({d.code})</p>}
+                                                </div>
+                                                {d.suggestion ? (
+                                                    <span className="text-sm font-semibold text-blue-700 bg-blue-100 px-2 py-1 rounded-full">Suggested</span>
+                                                ) : (
+                                                    <span className="text-sm font-semibold text-gray-600 bg-gray-200 px-2 py-1 rounded-full">Consider</span>
+                                                )}
+                                            </div>
+                                       ))}
+                                   </div>
+                               ) : (
+                                    <div className="bg-white p-3 rounded-lg shadow-sm text-gray-500 text-sm">No diagnosis suggested based on notes.</div>
+                               )}
+                           </div>
+            
+                            <div>
+                                <h3 className="text-md font-semibold text-gray-700 mb-2">Medication Suggested</h3>
+                                {aiResult.medications?.length > 0 ? (
+                                    <div className="space-y-2">
+                                       {aiResult.medications.map((m, i) => (
+                                            <div key={i} className="flex justify-between items-center bg-white p-3 rounded-lg shadow-sm">
+                                               <p className="text-gray-800">{m.name} {m.dosage} - {m.frequency}</p>
+                                               <ConfidenceBadge confidence={m.confidence} />
+                                            </div>
+                                       ))}
+                                   </div>
+                                ) : (
+                                    <div className="bg-white p-3 rounded-lg shadow-sm text-gray-500 text-sm">None Suggested</div>
+                                )}
+                            </div>
+                        </div>
+                        <div className="pt-4 flex space-x-3 mt-4">
+                            <button className="w-full bg-gray-200 text-gray-800 font-semibold py-2 px-4 rounded-lg hover:bg-gray-300">Edit</button>
+                            <button className="w-full bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700">Approve & Save</button>
                         </div>
                     </div>
-                  )}
-    
-                  {aiResult.diagnosis?.length > 0 && (
-                     <div>
-                        <h4 className="text-sm font-semibold text-gray-600 mb-2">Suggested Diagnosis</h4>
-                        <div className="space-y-1">
-                            {aiResult.diagnosis.filter(d => d.suggestion).map((d, i) => (
-                                <div key={i} className="flex justify-between items-center bg-teal-50 p-2 rounded text-sm border border-teal-200"><p>{d.description} <span className="text-gray-400">({d.code})</span></p><ConditionTag text={`Suggested`} color="teal" /></div>
-                            ))}
-                        </div>
-                    </div>
-                  )}
-    
-                  {aiResult.medications?.length > 0 && (
-                    <div>
-                        <h4 className="text-sm font-semibold text-gray-600 mb-2">Medications</h4>
-                         <div className="space-y-1">
-                            {aiResult.medications.map((m, i) => (
-                                <div key={i} className="flex justify-between items-center bg-white p-2 rounded text-sm shadow-sm"><p>{m.name} {m.dosage} - {m.frequency}</p><ConditionTag text={`${(m.confidence * 100).toFixed(0)}%`} color="green" /></div>
-                            ))}
-                        </div>
-                    </div>
-                  )}
-                </div>
-                <div className="pt-4 flex space-x-2">
-                    <button style={{ backgroundColor: '#7DE2D1' }} className="w-full text-teal-900 font-semibold py-2 px-4 rounded-lg hover:opacity-90">Edit</button>
-                    <button style={{ backgroundColor: '#5CB85C' }} className="w-full text-white font-semibold py-2 px-4 rounded-lg hover:opacity-90">Approve & Save</button>
-                </div>
+                )}
             </div>
-          )}
         </div>
-      </div>
     );
 };
 
@@ -365,8 +397,8 @@ const SimpleBarChart = ({ data, color = '#000000' }) => {
 };
 
 const MapComponent = ({ heatMapData }) => { const mapBounds = { minLat: 12.85, maxLat: 13.05, minLon: 77.55, maxLon: 77.75 }; const convertLocationToPercent = ({ lat, lon }) => { const top = 100 - ((lat - mapBounds.minLat) / (mapBounds.maxLat - mapBounds.minLat)) * 100; const left = ((lon - mapBounds.minLon) / (mapBounds.maxLon - mapBounds.minLon)) * 100; return { top: `${top}%`, left: `${left}%` }; }; const maxCount = Math.max(...heatMapData.map(d => d.count)); const heatMapCenter = heatMapData.find(d => d.count === maxCount); return ( <div className="relative w-full h-80 bg-teal-50 rounded-lg overflow-hidden border-2 border-teal-100"> <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(0,0,0,0.03)_1px,transparent_1px),linear-gradient(to_bottom,rgba(0,0,0,0.03)_1px,transparent_1px)] bg-[size:2rem_2rem]"></div> {heatMapCenter && ( <div className="absolute rounded-full" style={{ ...convertLocationToPercent(heatMapCenter.location), width: '200px', height: '200px', transform: 'translate(-50%, -50%)', background: 'radial-gradient(circle, rgba(255, 107, 107, 0.6) 0%, rgba(255, 107, 107, 0) 70%)', pointerEvents: 'none' }} ></div> )} {heatMapData.map((data, index) => { const { top, left } = convertLocationToPercent(data.location); return ( <div key={index} className="absolute group" style={{ top, left, transform: 'translate(-50%, -50%)' }}> <div className="w-4 h-4 rounded-full border-2 border-white cursor-pointer animate-pulse" style={{backgroundColor: '#FF6B6B'}}></div> <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1-2 w-max bg-gray-800 text-white text-xs rounded py-1 px-2 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap"> <p className="font-bold">{data.clinic}</p> <p>{data.disease}: {data.count} cases</p> </div> </div> ) })} </div> ); };
-
-const PatientHistoryTimeline = ({ history }) => {
+  
+  const PatientHistoryTimeline = ({ history }) => {
     if (!history || history.length === 0) {
       return (
         <div className="bg-white p-6 rounded-lg shadow-md h-full">
@@ -397,7 +429,7 @@ const PatientHistoryTimeline = ({ history }) => {
         </div>
       </div>
     );
-};
+  };
 
 const PatientSummaryView = ({ selectedPatient, patients, handlePatientSelect, handleRegenerateSummary, isProcessing, aiResult, setModalContent }) => { 
       const [isDropdownOpen, setDropdownOpen] = useState(false);
@@ -434,7 +466,7 @@ const PatientSummaryView = ({ selectedPatient, patients, handlePatientSelect, ha
                   <InfoCard title="Red Flag Alerts" className="flex-shrink-0 w-64"><ConditionTag text="Penicillin Allergy" color="red" /></InfoCard> 
                   <InfoCard title="Pre-existing Conditions" className="flex-shrink-0 w-64">{selectedPatient.preExistingConditions.map(c => <ConditionTag key={c} text={c} color="orange"/>)}</InfoCard> 
                   <InfoCard title="Known Allergies" className="flex-shrink-0 w-64">{selectedPatient.allergies.map(a => <ConditionTag key={a} text={a} color="orange"/>)}</InfoCard>
-              </div>
+              </div> 
 
               <div className="lg:col-span-1 h-[500px]">
                  <PatientHistoryTimeline history={selectedPatient.visitHistory} />
@@ -448,9 +480,9 @@ const PatientSummaryView = ({ selectedPatient, patients, handlePatientSelect, ha
               </div>
           </div> 
       ); 
-};
-
-const RegionalTrendsView = () => {
+  };
+  
+  const RegionalTrendsView = () => {
     const [dateRange, setDateRange] = useState('Last 4 Weeks');
     const [compareDisease, setCompareDisease] = useState('Malaria');
 
@@ -482,8 +514,8 @@ const RegionalTrendsView = () => {
             </div>
         </div>
     );
-};
-
+  };
+  
 // --- Main App Layout Components (Moved outside App to prevent re-renders) ---
 
 const Sidebar = ({ isSidebarCollapsed, setSidebarCollapsed, activeView, setActiveView }) => {
@@ -563,7 +595,7 @@ export default function App() {
     if (selectedPatientId) {
         const fetchPatientData = async () => {
             try {
-                const response = await fetch(`http://127.0.0.1:5000/patient_summary/${selectedPatientId}`);
+                const response = await fetch(`${API_BASE_URL}/patient_summary/${selectedPatientId}`);
                 if (response.ok) {
                     const data = await response.json();
                     // Here you would update your state with the fetched data.
@@ -578,93 +610,105 @@ export default function App() {
     }
   }, [selectedPatientId]);
 
-  // const processNotesWithMedGemma = async (note) => {
-  //   try {
-  //       const response = await fetch('http://122.0.0.1:5000/medgemma_analyze', {
-  //           method: 'POST',
-  //           headers: {
-  //               'Content-Type': 'application/json',
-  //           },
-  //           body: JSON.stringify({ text: note }),
-  //       });
-  //
-  //       if (!response.ok) {
-  //           throw new Error(`API error: ${response.statusText}`);
-  //       }
-  //       
-  //       const result = await response.json();
-  //       return result;
-  //   } catch (error) {
-  //       console.error("Error processing notes with MedGemma:", error);
-  //       return { analysis: "Failed to process notes due to an error." };
-  //   }
-  // };
-
   const handleProcessNotes = async () => {
     if (!noteText.trim() || !selectedPatient) return;
     setIsProcessing(true);
     setAiResult(null);
     setDdiAlerts([]);
 
-    // --- Temporarily disabled MedGemma call ---
-    // const medgemmaResult = await processNotesWithMedGemma(noteText);
-    // setAiResult(medgemmaResult);
+    let analysisResult = null;
 
-    // Mock result to allow DDI check to run
-    const medgemmaResult = {
-        medications: [{ name: "Atorvastatin" }]
-    };
-    setAiResult(medgemmaResult);
-    // --- End of temporary section ---
+    try {
+        // First, try the MedGemma endpoint
+        const medgemmaResponse = await fetch(`${API_BASE_URL}/medgemma_analyze`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: noteText }),
+        });
 
-    if (medgemmaResult.medications && medgemmaResult.medications.length > 0) {
-        const newMedications = medgemmaResult.medications.map(m => m.name);
+        if (medgemmaResponse.ok) {
+            analysisResult = await medgemmaResponse.json();
+        } else {
+            // If MedGemma fails, throw an error to trigger the fallback
+            throw new Error('MedGemma failed, trying fallback.');
+        }
+    } catch (error) {
+        console.warn(error.message);
         try {
-            const ddiResponse = await fetch('http://127.0.0.1:5000/ddi_check', {
+            // Fallback to Gemini endpoint
+            const geminiResponse = await fetch(`${API_BASE_URL}/gemini_analyze`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    current_medications: selectedPatient.currentMedications,
-                    new_medications: newMedications
-                })
+                body: JSON.stringify({ 
+                    text: noteText, 
+                    region: 'Bengaluru', // Hardcoding region for now
+                    current_medications: selectedPatient.currentMedications || []
+                }),
             });
-            if (ddiResponse.ok) {
-                const ddiData = await ddiResponse.json();
-                if (ddiData.interactions) {
-                    setDdiAlerts(ddiData.interactions);
-                }
+
+            if (geminiResponse.ok) {
+                analysisResult = await geminiResponse.json();
+            } else {
+                const errorData = await geminiResponse.json();
+                console.error("Gemini fallback also failed:", errorData.error);
+                // Optionally, set an error state to show in the UI
             }
-        } catch (error) {
-            console.error("Error checking DDI:", error);
+        } catch (fallbackError) {
+            console.error("Error with Gemini fallback:", fallbackError);
+        }
+    }
+
+    if (analysisResult) {
+        setAiResult(analysisResult);
+
+        if (analysisResult.medications && analysisResult.medications.length > 0) {
+            const newMedications = analysisResult.medications.map(m => m.name);
+            try {
+                const ddiResponse = await fetch(`${API_BASE_URL}/ddi_check`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        current_medications: selectedPatient.currentMedications,
+                        new_medications: newMedications
+                    })
+                });
+                if (ddiResponse.ok) {
+                    const ddiData = await ddiResponse.json();
+                    if (ddiData.interactions) {
+                        setDdiAlerts(ddiData.interactions);
+                    }
+                }
+            } catch (error) {
+                console.error("Error checking DDI:", error);
+            }
         }
     }
 
     setIsProcessing(false);
   };
   
-  // const generatePatientSummaryWithGemini = async (patientData) => {
-  //   const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-preview-0514:generateContent?key=${apiKey}`;
-  //   const systemPrompt = "You are a clinical assistant AI. Based on the following patient JSON data, write a concise, 3-line clinical summary for a doctor. Focus on the most critical, actionable information like chronic conditions, major recent events, and critical allergies.";
-  //   const payload = {
-  //       contents: [{ parts: [{ text: `Summarize this patient's history: ${JSON.stringify(patientData)}` }] }],
-  //       systemInstruction: { parts: [{ text: systemPrompt }] },
-  //   };
-  //   try {
-  //       const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-  //       if (!response.ok) throw new Error(`API error: ${response.statusText}`);
-  //       const result = await response.json();
-  //       return result.candidates?.[0]?.content?.parts?.[0]?.text || "Could not generate summary.";
-  //   } catch (error) {
-  //       console.error("Error generating summary:", error);
-  //       return "Failed to generate summary due to an error.";
-  //   }
-  // };
-  
   const handleRegenerateSummary = async () => {
     if (!selectedPatient) return;
     setIsProcessing(true);
-    // const newSummary = await generatePatientSummaryWithGemini(selectedPatient);
-    const newSummary = "New AI summary would be generated here."; // Placeholder
+    let newSummary = "Failed to generate summary due to an error."; // Default error message
+    try {
+        const response = await fetch(`${API_BASE_URL}/generate_summary`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(selectedPatient)
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            newSummary = data.summary;
+        } else {
+            const errorData = await response.json();
+            console.error("Error generating summary:", errorData.error);
+        }
+    } catch (error) {
+        console.error("Error generating summary:", error);
+    }
+
     setPatients(prevPatients => prevPatients.map(p => 
         p.id === selectedPatientId ? { ...p, aiSummary: newSummary } : p
     ));
