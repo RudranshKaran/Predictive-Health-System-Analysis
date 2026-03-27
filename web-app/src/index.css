@@ -1,0 +1,28 @@
+@import "tailwindcss";
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in-up {
+  opacity: 0;
+}
+
+.is-visible .fade-in-up {
+  animation: fadeInUp 0.8s ease-out forwards;
+}
+
+/* Delay for staggered animations */
+.is-visible .delay-1 {
+  animation-delay: 0.2s;
+}
+
+.is-visible .delay-2 {
+  animation-delay: 0.4s;
+}

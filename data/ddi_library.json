@@ -1,0 +1,14 @@
+[
+  {
+    "drugA": "Atorvastatin",
+    "drugB": "Clarithromycin",
+    "severity": "Severe",
+    "description": "High risk of rhabdomyolysis. Please review."
+  },
+  {
+    "drugA": "Amlodipine",
+    "drugB": "Simvastatin",
+    "severity": "Moderate",
+    "description": "Increased risk of myopathy."
+  }
+]
